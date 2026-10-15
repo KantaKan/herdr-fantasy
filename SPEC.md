@@ -54,18 +54,19 @@ schema with `herdr api schema --json` at implementation time and fix this sectio
 - Marketplace: public GitHub repo with topic `herdr-plugin` and a parsable manifest.
 
 ### 3.2 herdr socket API
-- Newline-delimited JSON over a Unix-domain socket (`~/.config/herdr/herdr.sock`; on Windows `%APPDATA%\herdr\herdr.sock`, verified with `herdr status server` on 0.9.3; always prefer `$HERDR_SOCKET_PATH`). On Windows this is AF_UNIX, which tokio does not support natively — use a crate such as `uds_windows` or shell out to `$HERDR_BIN_PATH`. ⚠️ pick and verify at M2.
+- Newline-delimited JSON over a Unix-domain socket (`~/.config/herdr/herdr.sock`; always prefer `$HERDR_SOCKET_PATH`). **On Windows it is a named pipe**: herdr serves `\\.\pipe\<socket path>` (e.g. `\\.\pipe\C:\Users\me\AppData\Roaming\herdr\herdr.sock`), and the file at the socket path only holds `pid:nonce`. Open the pipe like a file (`OpenOptions` read+write; retry on `ERROR_PIPE_BUSY`). Verified on 0.9.3.
 - Request: `{"id":"...","method":"...","params":{...}}`. Response echoes `id`.
 - Key methods: `agent.list`, `agent.get`, `agent.focus`, `pane.read`, `pane.list`, `pane.report_metadata`, `notification.show`, `events.subscribe`, `session.snapshot`, `plugin.pane.open`.
 - Agent status values: `idle`, `working`, `blocked`, `done`, `unknown` (`done` = idle and not yet seen).
-- `AgentInfo` exposes `agent`, `display_agent`, `terminal_title` and `terminal_title_stripped` (spinner glyph removed), `cwd`, `foreground_cwd`, pane `tokens`, and **`agent_session`** (`{source, agent, kind, value}`) — for Claude, `value` is the transcript path (verified in schema, herdr 0.9.3).
-- `events.subscribe` with `pane.agent_status_changed`, `pane.created`, `pane.closed`, `pane.updated`, `pane.focused`, `tab.focused`, `workspace.focused`, `layout.updated`.
-- **Events are invalidation signals, not truth.** On every relevant event, re-read with `agent.list` (debounced). On error `events_lost`: resubscribe, wait for `subscription_started`, then `session.snapshot` and replace cache.
+- `AgentInfo` exposes `agent`, `display_agent`, `terminal_title` and `terminal_title_stripped` (spinner glyph removed), `cwd`, `foreground_cwd`, pane `tokens`, and **`agent_session`** (`{source, agent, kind, value}`, `kind` = `id` | `path`). Real Claude panes report `kind: "id"` with the session UUID, not the path (verified 0.9.3).
+- `events.subscribe` exists, but `pane.agent_status_changed` subscriptions require a `pane_id` each (verified 0.9.3), so there is no single "any agent changed" stream.
+- **v1 polls `session.snapshot`** (~6 KB: agents, focused workspace, each workspace's active tab, layouts with zoom) every 200 ms while the stage is visible, 1 s while hidden, on one persistent connection. Changes only are sent to the render loop. Reconnect with backoff 250 ms → 5 s and a "reconnecting…" banner.
 - `pane.report_metadata` accepts up to 16 token keys per report, 32 per pane, values ≤ 80 chars, names `[A-Za-z0-9_-]{1,32}`, optional `ttl_ms` and `seq`.
 - Panes support the **Kitty graphics protocol**; herdr handles placement, clipping, visibility. The old socket graphics overlay API is removed — emit Kitty escapes in our own pane output.
 
 ### 3.3 Agent Transcripts (for rich events) — ADR-0001
-- herdr's built-in integrations (`herdr integration install claude`) run a `SessionStart` hook that calls `herdr pane report-agent-session --agent-session-id … --agent-session-path <transcript_path> --session-start-source <startup|resume|clear|compact|fork>`. We read that back from `AgentInfo.agent_session`. We install **no hooks of our own**.
+- herdr's built-in integrations (`herdr integration install claude`) run a `SessionStart` hook that calls `herdr pane report-agent-session --agent-session-id … --agent-session-path <transcript_path> --session-start-source …`. We read that back from `AgentInfo.agent_session`. We install **no hooks of our own**.
+- `agent_session.kind == "path"` → `value` is the transcript. `kind == "id"` (what Claude panes report on 0.9.3) → the transcript is `~/.claude/projects/<slug(cwd)>/<value>.jsonl`, where `slug` replaces every non-alphanumeric character of the agent's `cwd` with `-` (`D:\code\hrdr-game` → `D--code-hrdr-game`). Verified against real files.
 - The Claude transcript is JSONL. Entries we use (⚠️ verify every field name against a real transcript at M4 and update this list):
   - user message → new Quest, title = first line of the prompt text.
   - assistant `tool_use` blocks: `id`, `name` (`Read`, `Edit`, `Bash`, `PowerShell`, `Task`/`Agent`, …), `input` (`file_path`, `command`, …).
@@ -260,6 +261,23 @@ command = ["./target/release/herdr-fantasy", "ask"]
 | herdr | `agent_session.value` changes (`/clear` or new session) | **New Run** banner: Chapter closes in quest log, hero keeps level/stats |
 | game | Rubber Duck trigger (§6.6) | Duck waddles up, speech bubble with a Quip |
 
+**Shell commands and skills get their own moves** (M4, from the transcript's `Bash`/`PowerShell` `command` and `Skill` tool calls; first matching rule wins, non-matching commands cast the default spell):
+
+| Command / tool | Animation |
+|---|---|
+| `grep`, `rg`, `ag`, `findstr`, `Select-String` | sits and reads a big book, pages flipping |
+| `cat`, `less`, `head`, `tail`, `type`, `Get-Content` | unrolls a scroll and reads it |
+| `ls`, `dir`, `find`, `fd`, `tree`, `Get-ChildItem` | spyglass scout |
+| `curl`, `wget`, `Invoke-WebRequest` | releases a messenger bird |
+| `git commit` | stamps a wax seal on a scroll |
+| `git push` | sends a carrier pigeon flying right |
+| `git pull`, `git fetch` | a pigeon lands with a letter |
+| `npm/pnpm/yarn/bun install`, `cargo add`, `pip install` | shops at a tiny merchant, coin pops |
+| `rm`, `del`, `Remove-Item` | small fireball |
+| `mkdir`, `touch`, `cp`, `mv`, `New-Item` | hammers on an anvil |
+| `sleep`, `Start-Sleep` | dozes standing up |
+| `Skill` tool | opens a glowing spellbook; floating text `learned: <skill name>` |
+
 Rules:
 - Transcript events queue per hero; play at most one action animation at a time; if the queue exceeds 6, collapse into a combo ("x7 slashes!").
 - herdr status always wins over transcript-derived state for idle/working/blocked/done.
@@ -334,6 +352,7 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 - Start: a transcript user prompt, or herdr status → `working` with no open quest.
 - End: herdr status → `idle`/`done` and no new prompt within 10 s.
 - Abandon: pane closes during a quest → recorded as "unfinished".
+- Quests are per hero. `blocked` pauses the quest (never ends it); `idle`/`done` start the 10 s end timer. The HUD shows the focused hero's quest, else the most recently active one's, tagged with the hero name when the party has more than one hero.
 
 ### 6.5 Summons and Joke Classes
 - A subagent `tool_use` (`Task` / `Agent`) spawns a **Summon** next to the Hero that launched it; its `tool_result` dismisses it. Several may run in parallel.
@@ -375,7 +394,7 @@ All formulas live in `game/xp.rs` as pure functions with unit tests. Constants i
 |---|---|
 | Context growth (Claude, from transcript usage) | `+1 XP per 1,000 new context tokens` (delta of current context size; negative deltas ignored) |
 | Output tokens (Claude) | `+1 XP per 200 output tokens` |
-| Working time (agents without a parsed transcript) | `+1 XP per 10 s working`, capped at 60 XP per quest from time |
+| Working time (all agents) | `+1 XP per 10 s working`, capped at 60 XP per quest from time (the cap hits at 10 min, so the 20 min halving rule below never triggers for time XP) |
 | Quest complete | `+25` |
 | Boss victory | `+40`, first-try bonus `+30` |
 | Boss defeated after ≥ 2 failures ("Persistence") | `+20` extra |
@@ -536,14 +555,14 @@ state/
 ---
 
 ## 15. Open questions to verify during implementation
-1. Exact CLI flags for `herdr plugin pane open` (split direction, ratio, no-focus). Partial: `herdr pane split` has `--direction right|down`, `--ratio <f>` (sizes the new pane), `--focus` / `--no-focus`, `--cwd`, `--env`; check whether `plugin pane open` takes the same.
+1. ~~CLI flags for `herdr plugin pane open`~~ Resolved: `--plugin`, `--entrypoint`, `--placement overlay|split|tab|zoomed`, `--workspace`, `--target-pane`, `--direction right|down`, `--cwd`, `--env`, `--focus` / `--no-focus` — **no `--ratio`** (it opened a 50/50 split; resize afterwards with `herdr pane resize` / `layout.set_split_ratio` at M3). `herdr pane split` does have `--ratio` (sizes the new pane).
 2. How to detect an existing stage pane (plugin ownership in `pane.list`?).
 3. Behavior of plugin panes after herdr server restart / live handoff.
-4. Whether `agent_session` updates emit `pane.updated` / `pane.agent_status_changed` (otherwise poll `agent.list` every 2 s while any hero is working).
+4. ~~Event stream vs polling~~ Resolved: status-changed subscriptions are per pane; v1 polls `session.snapshot` (§3.2).
 5. Kitty graphics probe results inside herdr panes, locally and over SSH.
 6. Claude transcript field names (tool_use, tool_result `is_error`, usage, compaction marker, subagent tool name `Task` vs `Agent`), and whether a non-zero exit sets `is_error` for Bash and PowerShell.
 7. Herdr agent `agent` field values for each supported agent (for class mapping). Integrations on herdr 0.9.3: pi, omp, claude, codex, copilot, devin, droid, kimi, opencode, kilo, hermes, qodercli, qwen, cursor, mastracode, antigravity-cli, grok, letta.
-8. Windows: AF_UNIX client for the herdr socket (`uds_windows` vs shelling out to `herdr api`), and whether file-change notifications on transcripts are reliable.
+8. ~~Windows socket~~ Resolved: named pipe (§3.2). Still open: whether file-change notifications on transcripts are reliable on Windows (M4).
 
 ### Resolved
 - herdr runs natively on Windows (0.9.3); plugin `platforms` enum = `linux | macos | windows`; socket `%APPDATA%\herdr\herdr.sock`.

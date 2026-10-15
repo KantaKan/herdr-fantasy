@@ -1,0 +1,232 @@
+//! Per-repo save files (SPEC §10): `<root>/repos/<repo_key>/party.json` and an append-only
+//! `quests.jsonl`. Writes are atomic (temp file + rename). Only the stage writes.
+
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+pub const SCHEMA_VERSION: u32 = 1;
+
+/// What a hero keeps between sessions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Progress {
+    pub level: u32,
+    pub xp: u64,
+    #[serde(default)]
+    pub quests: u32,
+}
+
+impl Default for Progress {
+    fn default() -> Self {
+        Progress {
+            level: 1,
+            xp: 0,
+            quests: 0,
+        }
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct PartyFile {
+    #[serde(default)]
+    heroes: BTreeMap<String, Progress>,
+}
+
+/// One quest-log line.
+#[derive(Debug, Serialize)]
+pub struct QuestRecord<'a> {
+    pub hero: &'a str,
+    pub title: &'a str,
+    pub duration_ms: u64,
+    pub xp: u64,
+    pub result: &'a str,
+    pub ended_unix_ms: u64,
+}
+
+pub struct Store {
+    root: PathBuf,
+    parties: HashMap<String, PartyFile>,
+    dirty: HashSet<String>,
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+impl Store {
+    pub fn open(root: PathBuf) -> Self {
+        let version = root.join("version");
+        if !version.exists()
+            && let Err(e) = write_atomic(&version, SCHEMA_VERSION.to_string().as_bytes())
+        {
+            tracing::warn!("cannot write {}: {e}", version.display());
+        }
+        Store {
+            root,
+            parties: HashMap::new(),
+            dirty: HashSet::new(),
+        }
+    }
+
+    fn party_path(&self, repo: &str) -> PathBuf {
+        self.root.join("repos").join(repo).join("party.json")
+    }
+
+    /// Load a repo's party file; a corrupt file is moved aside and we start fresh.
+    fn party(&mut self, repo: &str) -> &mut PartyFile {
+        if !self.parties.contains_key(repo) {
+            let path = self.party_path(repo);
+            let file = match std::fs::read(&path) {
+                Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+                    let aside = path.with_extension(format!("json.corrupt-{}", now_ms()));
+                    tracing::warn!(
+                        "corrupt {} ({e}); moved to {}",
+                        path.display(),
+                        aside.display()
+                    );
+                    let _ = std::fs::rename(&path, &aside);
+                    PartyFile::default()
+                }),
+                Err(_) => PartyFile::default(),
+            };
+            self.parties.insert(repo.to_string(), file);
+        }
+        self.parties.get_mut(repo).unwrap()
+    }
+
+    pub fn get(&mut self, repo: &str, hero: &str) -> Progress {
+        self.party(repo)
+            .heroes
+            .get(hero)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn put(&mut self, repo: &str, hero: &str, p: Progress) {
+        let heroes = &mut self.party(repo).heroes;
+        if heroes.get(hero).cloned().unwrap_or_default() != p {
+            heroes.insert(hero.to_string(), p);
+            self.dirty.insert(repo.to_string());
+        }
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        !self.dirty.is_empty()
+    }
+
+    /// Write every changed party file. Failures are logged; the data stays dirty.
+    pub fn flush(&mut self) {
+        for repo in std::mem::take(&mut self.dirty) {
+            let path = self.party_path(&repo);
+            let json = serde_json::to_vec_pretty(&self.parties[&repo]).unwrap();
+            if let Err(e) = write_atomic(&path, &json) {
+                tracing::warn!("cannot save {}: {e}", path.display());
+                self.dirty.insert(repo);
+            }
+        }
+    }
+
+    pub fn append_quest(&self, repo: &str, rec: &QuestRecord) {
+        let path = self.root.join("repos").join(repo).join("quests.jsonl");
+        let line = serde_json::to_string(rec).unwrap();
+        let res = std::fs::create_dir_all(path.parent().unwrap()).and_then(|_| {
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)?;
+            writeln!(f, "{line}")
+        });
+        if let Err(e) = res {
+            tracing::warn!("cannot append {}: {e}", path.display());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("hf-test-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    #[test]
+    fn round_trip_survives_restart() {
+        let root = tmp("rt");
+        let mut s = Store::open(root.clone());
+        assert_eq!(s.get("repo1", "claude#0"), Progress::default());
+        let p = Progress {
+            level: 7,
+            xp: 12,
+            quests: 3,
+        };
+        s.put("repo1", "claude#0", p.clone());
+        assert!(s.is_dirty());
+        s.flush();
+        assert!(!s.is_dirty());
+        let mut again = Store::open(root.clone());
+        assert_eq!(again.get("repo1", "claude#0"), p);
+        assert_eq!(std::fs::read_to_string(root.join("version")).unwrap(), "1");
+    }
+
+    #[test]
+    fn corrupt_file_is_moved_aside() {
+        let root = tmp("corrupt");
+        let path = root.join("repos/r/party.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{not json").unwrap();
+        let mut s = Store::open(root.clone());
+        assert_eq!(s.get("r", "claude#0"), Progress::default());
+        let names: Vec<_> = std::fs::read_dir(root.join("repos/r"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert!(
+            names.iter().any(|n| n.starts_with("party.json.corrupt-")),
+            "{names:?}"
+        );
+    }
+
+    #[test]
+    fn unchanged_put_is_not_dirty() {
+        let mut s = Store::open(tmp("clean"));
+        s.put("r", "h", Progress::default());
+        assert!(!s.is_dirty());
+    }
+
+    #[test]
+    fn quest_log_appends() {
+        let root = tmp("quests");
+        let s = Store::open(root.clone());
+        for title in ["a", "b"] {
+            s.append_quest(
+                "r",
+                &QuestRecord {
+                    hero: "Claude",
+                    title,
+                    duration_ms: 1,
+                    xp: 2,
+                    result: "complete",
+                    ended_unix_ms: 3,
+                },
+            );
+        }
+        let log = std::fs::read_to_string(root.join("repos/r/quests.jsonl")).unwrap();
+        assert_eq!(log.lines().count(), 2);
+    }
+}

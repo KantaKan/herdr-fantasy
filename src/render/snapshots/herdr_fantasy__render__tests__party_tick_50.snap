@@ -6,7 +6,7 @@ Buffer {
     area: Rect { x: 0, y: 0, width: 90, height: 15 },
     content: [
         " herdr fantasy · demo-repo · Forge Village                                     Party Lv.1 ",
-        " ⚔ Quest: fix login redirect bug                                                  ⏱ 00:03 ",
+        " ⚔ Quest: add rate limiter · Codex                                                ⏱ 00:03 ",
         "▀                                                             ▀                           ",
         "       ▀▀▀        ▀                                           ▀                 ▀         ",
         "     ▀▀▀▀▀▀▀▀ ▀        ▀▀▀▀▀▀      ▀▀         z      ▀                                    ",
@@ -27,7 +27,8 @@ Buffer {
         x: 42, y: 0, fg: Reset, bg: Rgb(51, 60, 87), underline: Reset, modifier: NONE,
         x: 78, y: 0, fg: Rgb(255, 205, 117), bg: Rgb(51, 60, 87), underline: Reset, modifier: NONE,
         x: 0, y: 1, fg: Rgb(244, 244, 244), bg: Rgb(51, 60, 87), underline: Reset, modifier: NONE,
-        x: 32, y: 1, fg: Reset, bg: Rgb(51, 60, 87), underline: Reset, modifier: NONE,
+        x: 26, y: 1, fg: Rgb(65, 166, 246), bg: Rgb(51, 60, 87), underline: Reset, modifier: NONE,
+        x: 34, y: 1, fg: Reset, bg: Rgb(51, 60, 87), underline: Reset, modifier: NONE,
         x: 81, y: 1, fg: Rgb(148, 176, 194), bg: Rgb(51, 60, 87), underline: Reset, modifier: NONE,
         x: 0, y: 2, fg: Rgb(244, 244, 244), bg: Rgb(41, 54, 111), underline: Reset, modifier: NONE,
         x: 1, y: 2, fg: Reset, bg: Rgb(41, 54, 111), underline: Reset, modifier: NONE,

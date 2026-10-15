@@ -99,24 +99,32 @@ fn quest_line(w: &World, area: Rect, buf: &mut Buffer, y: u16) {
             "█".repeat(filled * 2),
             "░".repeat(8 - filled * 2)
         )
-    } else if let Some(q) = &w.quest {
+    } else if let Some(q) = w.quest_hero().and_then(|h| h.quest.as_ref()) {
         let s = q.elapsed_ms / 1000;
         format!(" ⏱ {:02}:{:02} ", s / 60, s % 60)
     } else {
         String::new()
     };
     let rx = area.right().saturating_sub(right.chars().count() as u16);
-    match &w.quest {
-        Some(q) => text(
-            buf,
-            area.x,
-            y,
-            rx,
-            &format!(" ⚔ Quest: {}", q.title),
-            'w',
-            'd',
-        ),
-        None => text(
+    if let Some(b) = &w.banner {
+        text(buf, area.x, y, rx, &format!(" ⚠ {b}"), 'o', 'd');
+    } else if let Some(h) = w.quest_hero() {
+        let q = h.quest.as_ref().unwrap();
+        let x = text(buf, area.x, y, rx, " ⚔ Quest: ", 'w', 'd');
+        let x = text(buf, x, y, rx, &q.title, 'w', 'd');
+        if w.heroes.len() > 1 {
+            text(
+                buf,
+                x,
+                y,
+                rx,
+                &format!(" · {}", h.name),
+                h.class.color(),
+                'd',
+            );
+        }
+    } else {
+        text(
             buf,
             area.x,
             y,
@@ -124,8 +132,8 @@ fn quest_line(w: &World, area: Rect, buf: &mut Buffer, y: u16) {
             " ⚔ No quest — the party rests",
             's',
             'd',
-        ),
-    };
+        );
+    }
     let fg = if w.boss.is_some() { 'r' } else { 's' };
     text(buf, rx, y, area.right(), &right, fg, 'd');
 }
@@ -165,6 +173,42 @@ fn backdrop(w: &World, scene: Rect, buf: &mut Buffer) {
 /// Pixel row where a sprite of height `h` stands on the ground.
 fn stand_y(scene: Rect, h: u16) -> i32 {
     (scene.height as i32 - 1) * 2 - h as i32
+}
+
+/// A departing hero turns around and walks off to the left (SPEC §5.4).
+fn walk_off(h: &Hero) -> (i32, bool) {
+    h.leaving_ms
+        .map_or((0, false), |ms| (-((ms / 40) as i32), true))
+}
+
+/// Golden column of light behind the hero, with LEVEL UP! on top (SPEC §7.2).
+fn level_up(w: &World, scene: Rect, buf: &mut Buffer, x: u16, left_ms: u64) {
+    let pulse = (w.clock_ms / 120).is_multiple_of(2);
+    let ground = scene.bottom() - 1;
+    for cy in scene.top()..ground {
+        for cx in x + 5..x + 11 {
+            if cx >= scene.right() {
+                continue;
+            }
+            let edge = cx == x + 5 || cx == x + 10;
+            let col = if edge == pulse { 'y' } else { 'w' };
+            let cell = &mut buf[(cx, cy)];
+            cell.set_symbol(" ");
+            cell.set_bg(c(col));
+        }
+    }
+    // Text rises for the first second, then holds.
+    let rise = (2_000u64.saturating_sub(left_ms) / 250).min(3) as u16;
+    let ty = (scene.y + 3).saturating_sub(rise).max(scene.y);
+    text(
+        buf,
+        scene.x + x + 3,
+        ty,
+        scene.right(),
+        "LEVEL UP!",
+        'k',
+        'y',
+    );
 }
 
 /// The whole party is resting: slimes leave and the camp comes out.
@@ -233,7 +277,11 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         let x = 1 + i as u16 * STEP;
         let f = sheet(&format!("hero_{}", h.class.id())).frame(h.anim().tag(), h.anim_ms);
         let py = stand_y(scene, f.h);
-        halfblock::draw(buf, scene, f, x as i32, py, false);
+        if h.level_up_ms > 0 {
+            level_up(w, scene, buf, x, h.level_up_ms);
+        }
+        let (dx, flip) = walk_off(h);
+        halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
         if let Some((s, fg)) = badge(h) {
             text(buf, scene.x + x + 12, scene.y, scene.right(), s, fg, 'n');
         }
@@ -305,7 +353,8 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
             h.anim_ms * 2
         };
         let f = sheet(&format!("face_{}", h.class.id())).frame("idle", ms);
-        halfblock::draw(buf, scene, f, x as i32, stand_y(scene, f.h), false);
+        let (dx, flip) = walk_off(h);
+        halfblock::draw(buf, scene, f, x as i32 + dx, stand_y(scene, f.h), flip);
         if let Some((s, fg)) = badge(h) {
             text(buf, scene.x + x + 7, scene.y, scene.right(), s, fg, 'n');
         }

@@ -16,6 +16,13 @@ pub fn add_xp(level: u32, xp: u64, gained: u64) -> (u32, u64, u32) {
     (level, xp, level - start)
 }
 
+/// Time XP for agents without richer signals: 1 XP per 10 s working, capped at 60 per
+/// quest (SPEC §7.1). The cap lands at 10 min, before the 20 min "halve the rate" rule
+/// could ever apply, so that rule is moot.
+pub fn time_xp(working_ms: u64) -> u64 {
+    (working_ms / 10_000).min(60)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -26,6 +33,13 @@ mod tests {
         assert_eq!(xp_to_next(2), 283);
         assert_eq!(xp_to_next(4), 800);
         assert_eq!(xp_to_next(0), 100);
+    }
+
+    #[test]
+    fn time_xp_caps_at_60() {
+        assert_eq!(time_xp(9_999), 0);
+        assert_eq!(time_xp(10_000), 1);
+        assert_eq!(time_xp(3_600_000), 60);
     }
 
     #[test]

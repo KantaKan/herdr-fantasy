@@ -1,0 +1,69 @@
+{
+ "id": "cli:agent:list",
+ "result": {
+  "agents": [
+   {
+    "agent": "claude",
+    "agent_session": {
+     "agent": "claude",
+     "kind": "id",
+     "source": "herdr:claude",
+     "value": "00000000-0000-0000-0000-000000000001"
+    },
+    "agent_status": "idle",
+    "cwd": "/home/dev/code/project-1",
+    "focused": false,
+    "pane_id": "w3:p1",
+    "revision": 2,
+    "state_change_seq": 5,
+    "tab_id": "w3:t1",
+    "terminal_id": "term_65de354a71c9c1",
+    "terminal_title": "✳ fix login redirect bug",
+    "terminal_title_stripped": "fix login redirect bug",
+    "workspace_id": "w3"
+   },
+   {
+    "agent": "claude",
+    "agent_session": {
+     "agent": "claude",
+     "kind": "id",
+     "source": "herdr:claude",
+     "value": "00000000-0000-0000-0000-000000000002"
+    },
+    "agent_status": "idle",
+    "completion_seq": 42,
+    "cwd": "/home/dev/code/project-2",
+    "focused": false,
+    "pane_id": "wB:p1",
+    "revision": 2,
+    "state_change_seq": 42,
+    "tab_id": "wB:t1",
+    "terminal_id": "term_65de354a862525",
+    "terminal_title": "✳ refactor session store",
+    "terminal_title_stripped": "refactor session store",
+    "workspace_id": "wB"
+   },
+   {
+    "agent": "claude",
+    "agent_session": {
+     "agent": "claude",
+     "kind": "id",
+     "source": "herdr:claude",
+     "value": "00000000-0000-0000-0000-000000000003"
+    },
+    "agent_status": "working",
+    "cwd": "/home/dev/code/project-3",
+    "focused": true,
+    "pane_id": "wC:p1",
+    "revision": 3,
+    "state_change_seq": 70,
+    "tab_id": "wC:t1",
+    "terminal_id": "term_65de7539caca66",
+    "terminal_title": "◐ update deps",
+    "terminal_title_stripped": "update deps",
+    "workspace_id": "wC"
+   }
+  ],
+  "type": "agent_list"
+ }
+}

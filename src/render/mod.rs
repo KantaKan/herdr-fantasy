@@ -1,72 +1,193 @@
-//! Frame loop: adaptive FPS, redraw only when the frame changed (SPEC §8.5).
+//! Frame loop: adaptive FPS, redraw only when the frame changed, nothing at all while
+//! the stage is hidden (SPEC §8.5).
 
 pub mod halfblock;
 pub mod layout;
 pub mod sprites;
 
+use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use crate::game::demo::{self, Demo};
+use crate::config::Config;
+use crate::game::demo;
+use crate::game::party;
+use crate::game::persist::{QuestRecord, Store};
 use crate::game::world::World;
+use crate::herdr::cache::{self, Update};
 
 const ACTIVE_FPS: u64 = 15;
 const IDLE_FPS: u64 = 4;
+/// While hidden we only wake for input/resize or this often to pick up herdr changes.
+const HIDDEN_WAKE: Duration = Duration::from_secs(1);
+const AUTOSAVE: Duration = Duration::from_secs(30);
+const MAX_WAIT: Duration = Duration::from_millis(100);
 
-pub fn run_demo(
-    scenario: &str,
-    seed: u64,
-    speed: f32,
-    classes: &demo::Classes,
-) -> anyhow::Result<()> {
-    let (mut world, mut demo) = demo::scenario(scenario, seed, classes)
+pub fn run_demo(scenario: &str, seed: u64, speed: f32, config: &Config) -> anyhow::Result<()> {
+    let (mut world, mut demo) = demo::scenario(scenario, seed, &config.classes)
         .ok_or_else(|| anyhow::anyhow!("unknown demo scenario `{scenario}` (try: party)"))?;
     sprites::sheets(); // decode before the first frame
+    let speed = speed.max(0.0) as f64;
+    let mut carry = 0.0;
+    with_terminal(|t| {
+        // ponytail: `q` quits the demo until M7 gives it the quest log.
+        frame_loop(t, &mut world, true, |w, real_ms| {
+            let ms = real_ms * speed + carry;
+            carry = ms.fract();
+            demo.advance(ms as u64, w);
+            true
+        })
+    })
+}
+
+/// The real stage: party from herdr, progress saved per repo.
+pub fn run_live(config: &Config) -> anyhow::Result<()> {
+    let me = cache::Me::from_env();
+    let rx = cache::spawn(me.clone(), config.show_all_workspaces || me.is_none());
+    let root = crate::logging::state_dir()
+        .ok_or_else(|| anyhow::anyhow!("no state directory"))?
+        .join("state");
+    let mut store = Store::open(root);
+    let mut world = World::new("…", "Meadow Hamlet");
+    world.banner = Some("looking for herdr…".into());
+    sprites::sheets();
+    let mut visible = true;
+    let mut last_save = Instant::now();
+    let result = with_terminal(|t| {
+        frame_loop(t, &mut world, false, |w, real_ms| {
+            visible = drain(&rx, w, config, &mut store, visible);
+            w.update(real_ms as u64);
+            persist(w, &mut store, &mut last_save);
+            visible
+        })
+    });
+    for h in &world.heroes {
+        party::save_hero(h, &mut store);
+    }
+    store.flush();
+    result
+}
+
+/// Apply every pending herdr update; returns the latest visibility.
+fn drain(
+    rx: &Receiver<Update>,
+    w: &mut World,
+    cfg: &Config,
+    store: &mut Store,
+    mut visible: bool,
+) -> bool {
+    loop {
+        match rx.try_recv() {
+            Ok(Update::Party { agents, visible: v }) => {
+                w.banner = None;
+                party::sync(w, &agents, &cfg.classes, store);
+                visible = v;
+            }
+            Ok(Update::Lost) => w.banner = Some("reconnecting to herdr…".into()),
+            Err(TryRecvError::Empty) => return visible,
+            Err(TryRecvError::Disconnected) => {
+                w.banner = Some("herdr link stopped".into());
+                return visible;
+            }
+        }
+    }
+}
+
+/// Write finished quests to the log; save progress on level-up / quest end / every 30 s.
+fn persist(w: &mut World, store: &mut Store, last_save: &mut Instant) {
+    let ended = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64);
+    for f in std::mem::take(&mut w.finished) {
+        let Some(seat) = &f.seat else { continue };
+        store.append_quest(
+            &seat.repo.key,
+            &QuestRecord {
+                hero: &f.hero,
+                title: &f.quest.title,
+                duration_ms: f.quest.duration_ms,
+                xp: f.quest.xp,
+                result: f.quest.result,
+                ended_unix_ms: ended,
+            },
+        );
+        let mut p = store.get(&seat.repo.key, &seat.key());
+        p.quests += 1;
+        store.put(&seat.repo.key, &seat.key(), p);
+    }
+    if w.save_now || last_save.elapsed() >= AUTOSAVE {
+        for h in &w.heroes {
+            party::save_hero(h, store);
+        }
+        if store.is_dirty() {
+            store.flush();
+        }
+        w.save_now = false;
+        *last_save = Instant::now();
+    }
+}
+
+fn with_terminal(
+    f: impl FnOnce(&mut ratatui::DefaultTerminal) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
     let mut terminal = ratatui::init();
-    let result = frame_loop(&mut terminal, &mut world, &mut demo, speed.max(0.0) as f64);
+    let result = f(&mut terminal);
     ratatui::restore();
     result
 }
 
+/// `step(world, real_ms)` advances the game and returns whether the stage is visible.
 fn frame_loop(
     terminal: &mut ratatui::DefaultTerminal,
     world: &mut World,
-    demo: &mut Demo,
-    speed: f64,
+    quit_on_q: bool,
+    mut step: impl FnMut(&mut World, f64) -> bool,
 ) -> anyhow::Result<()> {
     let mut last = Instant::now();
-    let mut carry = 0.0;
     let mut prev: Option<Buffer> = None;
+    let mut visible = true;
     loop {
-        let fps = if world.is_busy() {
-            ACTIVE_FPS
+        let wait = if !visible {
+            HIDDEN_WAKE
         } else {
-            IDLE_FPS
+            let fps = if world.is_busy() {
+                ACTIVE_FPS
+            } else {
+                IDLE_FPS
+            };
+            // Never sleep longer than MAX_WAIT so a herdr change shows up within ~300 ms
+            // even at idle FPS; unchanged frames are not redrawn anyway.
+            Duration::from_millis(1000 / fps)
+                .min(MAX_WAIT)
+                .saturating_sub(last.elapsed())
         };
-        let frame = Duration::from_millis(1000 / fps);
-        if event::poll(frame.saturating_sub(last.elapsed()))? {
+        if event::poll(wait)? {
             match event::read()? {
                 Event::Key(k) if k.kind == KeyEventKind::Press => {
                     let ctrl_c =
                         k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL);
-                    // ponytail: `q` quits the demo until M7 gives it the quest log.
-                    if ctrl_c || k.code == KeyCode::Char('q') {
+                    if ctrl_c || (quit_on_q && k.code == KeyCode::Char('q')) {
                         return Ok(());
                     }
                 }
                 Event::Resize(..) => prev = None,
                 _ => {}
             }
-            continue;
+            if visible {
+                continue;
+            }
         }
         let now = Instant::now();
-        let ms = (now - last).as_secs_f64() * 1000.0 * speed + carry;
+        let real_ms = (now - last).as_secs_f64() * 1000.0;
         last = now;
-        carry = ms.fract();
-        demo.advance(ms as u64, world);
+        visible = step(world, real_ms);
+        if !visible {
+            prev = None; // repaint fully when we come back
+            continue;
+        }
 
         let size = terminal.size()?;
         let area = Rect::new(0, 0, size.width, size.height);

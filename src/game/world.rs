@@ -1,15 +1,15 @@
-//! The game state the renderer draws. Everything enters through `GameEvent`, so demo,
-//! herdr (M2), and transcripts (M4) all drive the same code.
+//! The game state the renderer draws. Changes enter through `GameEvent` (demo, and later
+//! transcripts) or `party::sync` (live herdr agents), so every source drives the same code.
 
 use super::boss::{self, BossKind, Tier};
-use super::hero::{Action, Class, Hero, Status};
+use super::hero::{Action, Class, Hero, QuestDone, Seat, Status};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameEvent {
     Status(usize, Status),
     Act(usize, Action, Option<String>),
-    QuestStart(String),
-    QuestEnd,
+    /// The hero's current work title (names its quest).
+    Title(usize, String),
     /// A boss command started (kind from the classifier, the command text).
     BossEnter(BossKind, String),
     /// The boss command failed: boss laughs and loses 25% HP.
@@ -42,6 +42,8 @@ pub struct Boss {
 
 const LAUGH_MS: u64 = 1200;
 const DYING_MS: u64 = 1200;
+/// How long a departing hero takes to walk off-screen.
+pub const LEAVE_MS: u64 = 1500;
 
 impl Boss {
     pub fn new(kind: BossKind, command: &str) -> Self {
@@ -94,10 +96,12 @@ impl Boss {
     }
 }
 
+/// A quest that just ended, waiting to be written to the quest log.
 #[derive(Debug, Clone)]
-pub struct Quest {
-    pub title: String,
-    pub elapsed_ms: u64,
+pub struct Finished {
+    pub hero: String,
+    pub seat: Option<Seat>,
+    pub quest: QuestDone,
 }
 
 #[derive(Debug, Clone)]
@@ -105,10 +109,15 @@ pub struct World {
     pub repo: String,
     pub theme: String,
     pub heroes: Vec<Hero>,
-    pub quest: Option<Quest>,
     pub boss: Option<Boss>,
-    /// Total game time; drives ambient animation (slimes, ground).
+    /// Total game time; drives ambient animation (slimes, ground, stars).
     pub clock_ms: u64,
+    /// Shown on the quest line, e.g. "reconnecting to herdr…".
+    pub banner: Option<String>,
+    /// Quests finished since the caller last drained this.
+    pub finished: Vec<Finished>,
+    /// Progress changed in a way worth saving right away (level-up, quest end).
+    pub save_now: bool,
 }
 
 impl World {
@@ -117,9 +126,11 @@ impl World {
             repo: repo.to_string(),
             theme: theme.to_string(),
             heroes: Vec::new(),
-            quest: None,
             boss: None,
             clock_ms: 0,
+            banner: None,
+            finished: Vec::new(),
+            save_now: false,
         }
     }
 
@@ -138,6 +149,14 @@ impl World {
         (sum + n / 2) / n
     }
 
+    /// The hero whose quest the HUD shows: focused first, else most recently active.
+    pub fn quest_hero(&self) -> Option<&Hero> {
+        let with_quest = || self.heroes.iter().filter(|h| h.quest.is_some());
+        with_quest()
+            .find(|h| h.focused)
+            .or_else(|| with_quest().max_by_key(|h| h.last_active_ms))
+    }
+
     pub fn apply(&mut self, ev: GameEvent) {
         match ev {
             GameEvent::Status(i, s) => {
@@ -150,13 +169,11 @@ impl World {
                     h.act(a, detail);
                 }
             }
-            GameEvent::QuestStart(title) => {
-                self.quest = Some(Quest {
-                    title,
-                    elapsed_ms: 0,
-                })
+            GameEvent::Title(i, t) => {
+                if let Some(h) = self.heroes.get_mut(i) {
+                    h.title = Some(t);
+                }
             }
-            GameEvent::QuestEnd => self.quest = None,
             GameEvent::BossEnter(kind, cmd) => self.boss = Some(Boss::new(kind, &cmd)),
             GameEvent::BossFail => {
                 if let Some(b) = &mut self.boss {
@@ -169,8 +186,10 @@ impl World {
                 }
             }
             GameEvent::Xp(i, n) => {
-                if let Some(h) = self.heroes.get_mut(i) {
-                    h.gain_xp(n);
+                if let Some(h) = self.heroes.get_mut(i)
+                    && h.gain_xp(n) > 0
+                {
+                    self.save_now = true;
                 }
             }
             GameEvent::ContextUsed(i, pct) => {
@@ -184,11 +203,24 @@ impl World {
     pub fn update(&mut self, dt: u64) {
         self.clock_ms += dt;
         for h in &mut self.heroes {
-            h.update(dt);
+            let level = h.level;
+            if let Some(quest) = h.update(dt) {
+                self.finished.push(Finished {
+                    hero: h.name.clone(),
+                    seat: h.seat.clone(),
+                    quest,
+                });
+                self.save_now = true;
+            }
+            if h.level > level {
+                self.save_now = true;
+            }
+            if h.status == Status::Working {
+                h.last_active_ms = self.clock_ms;
+            }
         }
-        if let Some(q) = &mut self.quest {
-            q.elapsed_ms += dt;
-        }
+        self.heroes
+            .retain(|h| h.leaving_ms.is_none_or(|ms| ms < LEAVE_MS));
         if let Some(b) = &mut self.boss
             && !b.update(dt)
         {
@@ -199,10 +231,9 @@ impl World {
     /// Anything animating beyond idle breathing? Drives adaptive FPS (SPEC §8.5).
     pub fn is_busy(&self) -> bool {
         self.boss.is_some()
-            || self
-                .heroes
-                .iter()
-                .any(|h| h.status != Status::Idle || h.busy())
+            || self.heroes.iter().any(|h| {
+                h.status != Status::Idle || h.busy() || h.level_up_ms > 0 || h.leaving_ms.is_some()
+            })
     }
 }
 
@@ -244,5 +275,42 @@ mod tests {
         assert!(!w.is_busy());
         w.apply(GameEvent::Status(a, Status::Working));
         assert!(w.is_busy());
+    }
+
+    #[test]
+    fn hud_quest_prefers_focused_then_recent() {
+        let mut w = World::new("r", "t");
+        let (a, b) = (w.add_hero("A", Class::Knight), w.add_hero("B", Class::Mage));
+        w.apply(GameEvent::Status(b, Status::Working));
+        w.update(10);
+        w.apply(GameEvent::Status(a, Status::Working));
+        w.apply(GameEvent::Status(b, Status::Idle));
+        w.update(10);
+        assert_eq!(w.quest_hero().unwrap().name, "A", "A worked most recently");
+        w.heroes[b].focused = true;
+        assert_eq!(w.quest_hero().unwrap().name, "B");
+    }
+
+    #[test]
+    fn finished_quests_are_collected_and_flag_a_save() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.apply(GameEvent::Status(a, Status::Working));
+        w.update(1);
+        w.apply(GameEvent::Status(a, Status::Idle));
+        w.update(crate::game::hero::QUEST_END_IDLE_MS);
+        assert_eq!(w.finished.len(), 1);
+        assert!(w.save_now);
+    }
+
+    #[test]
+    fn leaving_heroes_are_removed_after_walking_off() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.heroes[a].leaving_ms = Some(0);
+        w.update(LEAVE_MS - 1);
+        assert_eq!(w.heroes.len(), 1);
+        w.update(1);
+        assert!(w.heroes.is_empty());
     }
 }

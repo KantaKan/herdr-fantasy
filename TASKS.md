@@ -31,18 +31,19 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [x] Snapshot tests: render ticks 0, 50, 200 of `party --seed 1` with `TestBackend` + insta.
 
 ## M2 — Live herdr connection (status-level game)
-- [ ] `herdr/client.rs`: connect to socket, request/response by id, subscription stream. Works on Windows AF_UNIX (resolve SPEC §15 Q9).
-- [ ] `herdr/types.rs`: AgentInfo, PaneInfo, events; ignore unknown fields. Fixtures in `tests/fixtures/` captured from a real herdr.
-- [ ] `herdr/cache.rs`: subscribe to SPEC §3.2 events, debounced `agent.list` refetch, `events_lost` recovery, reconnect with backoff + banner.
-- [ ] Map herdr status → hero state (idle, working auto-battle, blocked ❗, done victory, gone walks off).
-- [ ] Party = agents in the stage's own workspace (`HERDR_WORKSPACE_ID`); `show_all_workspaces` option.
-- [ ] Quest title from `terminal_title_stripped`; quest lifecycle (SPEC §6.4).
-- [ ] `game/repo.rs` repo identity (SPEC §6.1) from agent `foreground_cwd`/`cwd`.
-- [ ] Hero identity + slots + class mapping (SPEC §6.2).
-- [ ] Time-based XP for all agents, levels, level-up effect (SPEC §7).
-- [ ] `game/persist.rs` save/load party per repo, atomic writes, corrupt-file handling.
-- [ ] Visibility gating: 0 fps when the stage pane's tab/workspace is not focused.
-  **Done when:** inside herdr with real Claude Code + Codex panes, `herdr plugin pane open --plugin kantakan.herdr-fantasy --entrypoint stage` shows both heroes and their states change within 300 ms of herdr's sidebar; killing/restarting the stage keeps levels.
+- [x] `herdr/client.rs`: connect to socket, request/response by id, subscription stream. Works on Windows AF_UNIX (resolve SPEC §15 Q9).
+- [x] `herdr/types.rs`: AgentInfo, PaneInfo, events; ignore unknown fields. Fixtures in `tests/fixtures/` captured from a real herdr (scrubbed of real paths/titles).
+- [x] `herdr/cache.rs`: poll `session.snapshot` (SPEC §3.2 — per-pane status subscriptions made events impractical), send only changes, reconnect with backoff + banner.
+- [x] Map herdr status → hero state (idle, working auto-battle, blocked ❗, done victory, gone walks off).
+- [x] Party = agents in the stage's own workspace (`HERDR_WORKSPACE_ID`); `show_all_workspaces` option.
+- [x] Quest title from `terminal_title_stripped`; quest lifecycle (SPEC §6.4).
+- [x] `game/repo.rs` repo identity (SPEC §6.1) from agent `foreground_cwd`/`cwd`.
+- [x] Hero identity + slots + class mapping (SPEC §6.2).
+- [x] Time-based XP for all agents, levels, level-up effect (SPEC §7).
+- [x] `game/persist.rs` save/load party per repo, atomic writes, corrupt-file handling.
+- [x] Visibility gating: 0 fps when the stage pane's tab/workspace is not focused.
+- [ ] **Manual check left for KantaKan:** open a Codex pane next to a Claude pane and confirm both heroes appear and track herdr's sidebar.
+  **Done when:** inside herdr with real Claude Code + Codex panes, `herdr plugin pane open --plugin kantakan.herdr-fantasy --entrypoint stage` shows both heroes and their states change within 300 ms of herdr's sidebar; killing/restarting the stage keeps levels. (2026-10-16: verified with a real Claude pane via `herdr plugin pane open … --target-pane wC:p1 --direction down --no-focus`; XP saved on Ctrl-C and reloaded. Codex not yet tried.)
 
 ## M3 — Auto-open + notifications + ask popup
 - [ ] `autostart`: open stage per SPEC §5.1 without stealing focus, never duplicate. Resolve SPEC §15 Q1–Q3 and update SPEC.
@@ -58,7 +59,7 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [ ] `transcript/tail.rs`: follow by byte offset, partial lines, truncation/replacement, no replay on first sight (SPEC §11).
 - [ ] `transcript/claude.rs`: entries → agent-neutral `GameEvent` (pure, fixture-tested).
 - [ ] Wire `agent_session.value` from herdr cache → one tailer per live Claude Agent; path change = new Chapter.
-- [ ] Tool → animation mapping (SPEC §5.4), action queue with combo collapse.
+- [ ] Tool → animation mapping (SPEC §5.4), including per-command moves (grep reads a book, git push sends a pigeon, …) and the `Skill` spellbook; action queue with combo collapse.
 - [ ] Quest title from the transcript user prompt; `store_prompt_text` option.
   **Done when:** in a Claude Code pane, reading files opens chests and edits swing swords with line-count damage within 1 s; restarting the stage doesn't replay old actions; `/clear` starts a new Chapter.
 

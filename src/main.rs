@@ -1,5 +1,6 @@
 mod config;
 mod game;
+mod herdr;
 mod logging;
 mod palette;
 mod render;
@@ -74,15 +75,35 @@ fn main() -> anyhow::Result<()> {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |d| d.as_nanos() as u64)
             });
-            return render::run_demo(&scenario, seed, speed, &config.classes);
+            return render::run_demo(&scenario, seed, speed, &config);
         }
-        Command::Stage { .. } => "stage",
+        Command::Stage { .. } => return render::run_live(&config),
         Command::Ask { .. } => "ask",
         Command::Autostart => "autostart",
         Command::OpenAsk => "open-ask",
         Command::ToggleStage => "toggle-stage",
-        Command::Doctor => "doctor",
+        Command::Doctor => return doctor(&config),
     };
     eprintln!("{name}: not implemented");
+    Ok(())
+}
+
+fn doctor(config: &config::Config) -> anyhow::Result<()> {
+    let sock = herdr::client::socket_path();
+    println!("socket:  {}", sock.display());
+    match herdr::client::Client::connect()
+        .and_then(|mut c| c.request("agent.list", serde_json::json!({})))
+    {
+        Ok(r) => println!(
+            "herdr:   ok, {} agents",
+            r["agents"].as_array().map_or(0, Vec::len)
+        ),
+        Err(e) => println!("herdr:   not reachable ({e:#})"),
+    }
+    println!(
+        "config:  {}",
+        config::config_path().map_or("none".into(), |p| p.display().to_string())
+    );
+    println!("render:  {:?} (halfblock until M9)", config.render);
     Ok(())
 }
