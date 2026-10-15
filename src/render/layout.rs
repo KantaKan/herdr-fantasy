@@ -130,10 +130,23 @@ fn quest_line(w: &World, area: Rect, buf: &mut Buffer, y: u16) {
     text(buf, rx, y, area.right(), &right, fg, 'd');
 }
 
-/// Sky, then a strip of grass that scrolls while anyone walks.
+/// Night sky with twinkling stars, then a strip of grass that scrolls while anyone walks.
 fn backdrop(w: &World, scene: Rect, buf: &mut Buffer) {
     halfblock::fill(buf, scene, c('n'));
     let gy = scene.bottom() - 1;
+    for y in scene.top()..gy {
+        for x in scene.left()..scene.right() {
+            let h = (x as u64 - scene.x as u64).wrapping_mul(73_856_093)
+                ^ (y as u64 - scene.y as u64).wrapping_mul(19_349_663);
+            if !h.is_multiple_of(31) || (h / 31 + w.clock_ms / 700).is_multiple_of(7) {
+                continue;
+            }
+            let cell = &mut buf[(x, y)];
+            cell.set_symbol("▀");
+            cell.set_fg(c(if h.is_multiple_of(3) { 'w' } else { 's' }));
+            cell.set_bg(c('n'));
+        }
+    }
     let walking = w.heroes.iter().any(|h| h.anim() == Anim::Walk);
     let scroll = if walking {
         (w.clock_ms / 120) as u16
@@ -152,6 +165,47 @@ fn backdrop(w: &World, scene: Rect, buf: &mut Buffer) {
 /// Pixel row where a sprite of height `h` stands on the ground.
 fn stand_y(scene: Rect, h: u16) -> i32 {
     (scene.height as i32 - 1) * 2 - h as i32
+}
+
+/// The whole party is resting: slimes leave and the camp comes out.
+fn camp(w: &World) -> bool {
+    w.boss.is_none() && w.heroes.iter().all(|h| h.status == Status::Idle)
+}
+
+/// Campfire with the Rubber Duck beside it, ending at column `right`.
+fn campfire(w: &World, scene: Rect, buf: &mut Buffer, right: i32, duck: bool) {
+    let fire = sheet("campfire").frame("burn", w.clock_ms);
+    let fx = right - fire.w as i32 - if duck { 12 } else { 2 };
+    halfblock::draw(buf, scene, fire, fx, stand_y(scene, fire.h), false);
+    if duck {
+        let d = sheet("rubber_duck").frame("idle", w.clock_ms);
+        halfblock::draw(
+            buf,
+            scene,
+            d,
+            right - d.w as i32 - 2,
+            stand_y(scene, d.h),
+            true,
+        );
+    }
+}
+
+/// Floating z's over a sleeping hero; `head_y` is the cell row of the top of its head.
+fn zzz(w: &World, scene: Rect, buf: &mut Buffer, x: u16, head_y: i32, seed: u64) {
+    let phase = ((w.clock_ms + seed * 700) / 700 % 3) as i32;
+    let y = head_y - 1 - phase;
+    if y >= scene.y as i32 {
+        let s = if phase == 2 { "Z" } else { "z" };
+        text(
+            buf,
+            scene.x + x + phase as u16,
+            y as u16,
+            scene.right(),
+            s,
+            's',
+            'n',
+        );
+    }
 }
 
 fn badge(h: &Hero) -> Option<(&'static str, char)> {
@@ -178,9 +232,21 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     for (i, h) in w.heroes.iter().take(drawn).enumerate() {
         let x = 1 + i as u16 * STEP;
         let f = sheet(&format!("hero_{}", h.class.id())).frame(h.anim().tag(), h.anim_ms);
-        halfblock::draw(buf, scene, f, x as i32, stand_y(scene, f.h), false);
+        let py = stand_y(scene, f.h);
+        halfblock::draw(buf, scene, f, x as i32, py, false);
         if let Some((s, fg)) = badge(h) {
             text(buf, scene.x + x + 12, scene.y, scene.right(), s, fg, 'n');
+        }
+        if h.anim() == Anim::Sit {
+            // The seated sprite's head starts 4 px down.
+            zzz(
+                w,
+                scene,
+                buf,
+                x + 11,
+                scene.y as i32 + (py + 4) / 2,
+                i as u64,
+            );
         }
     }
     plus_n(w, scene, buf, 1 + drawn as u16 * STEP, drawn);
@@ -206,6 +272,8 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
             stand_y(scene, f.h),
             false,
         );
+    } else if camp(w) {
+        campfire(w, scene, buf, right, true);
     } else {
         let hit = w.heroes.iter().any(|h| h.anim() == Anim::Attack);
         slimes(w, scene, buf, right, 2, hit);
@@ -243,8 +311,12 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         }
     }
     plus_n(w, scene, buf, 1 + drawn as u16 * STEP, drawn);
-    let hit = w.heroes.iter().any(|h| h.anim() == Anim::Attack);
-    slimes(w, scene, buf, scene.width as i32, 1, hit);
+    if camp(w) {
+        campfire(w, scene, buf, scene.width as i32, false);
+    } else {
+        let hit = w.heroes.iter().any(|h| h.anim() == Anim::Attack);
+        slimes(w, scene, buf, scene.width as i32, 1, hit);
+    }
 }
 
 fn bar(filled: usize, total: usize) -> (String, String) {

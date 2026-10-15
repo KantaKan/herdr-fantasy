@@ -161,6 +161,7 @@ mod tests {
             }
         }
         assert_eq!(sheet("rubber_duck").frames[0].w, 8);
+        assert_eq!(sheet("campfire").frames.len(), 3);
     }
 
     #[test]

@@ -242,7 +242,7 @@ command = ["./target/release/herdr-fantasy", "ask"]
 
 | Source | Trigger | Animation |
 |---|---|---|
-| herdr | `idle` | sits at campfire, slow breathing, occasional `z` |
+| herdr | `idle` | sits down (legs forward), slow breathing, floating `z`s; when the **whole party** is idle and no boss is up, the slimes leave and a campfire with the Rubber Duck appears |
 | herdr | `working` (no rich events) | walks forward, auto-battles slimes; small XP ticks |
 | herdr | `blocked` | stops, `❗` bubble above head, bounces gently; footer shows key hint |
 | herdr | `done` (not yet seen) | victory pose + sparkle loop until seen |

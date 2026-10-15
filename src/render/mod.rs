@@ -137,3 +137,59 @@ mod tests {
         }
     }
 }
+
+/// Dev helper: `PREVIEW_DIR=<dir> PREVIEW=<cols>x<rows>@<tick>[,…] cargo test preview_png -- --ignored`
+/// writes demo frames as PNGs (text cells drawn as solid fg) so layouts can be eyeballed.
+#[cfg(test)]
+mod preview {
+    use super::*;
+    use ratatui::style::Color;
+
+    fn px(c: Color) -> image::Rgb<u8> {
+        match c {
+            Color::Rgb(r, g, b) => image::Rgb([r, g, b]),
+            _ => image::Rgb([0, 0, 0]),
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn preview_png() {
+        let dir = std::env::var("PREVIEW_DIR").expect("PREVIEW_DIR");
+        let spec = std::env::var("PREVIEW").unwrap_or("90x15@140".into());
+        for item in spec.split(',') {
+            let (size, tick) = item.split_once('@').unwrap();
+            let (w, h) = size.split_once('x').unwrap();
+            let (w, h, tick): (u16, u16, u32) = (
+                w.parse().unwrap(),
+                h.parse().unwrap(),
+                tick.parse().unwrap(),
+            );
+            let (mut world, mut d) = demo::party(1, &crate::config::Config::default().classes);
+            for _ in 0..tick {
+                d.advance(66, &mut world);
+            }
+            let area = Rect::new(0, 0, w, h);
+            let mut buf = Buffer::empty(area);
+            layout::render(&world, area, &mut buf);
+            let s = 5;
+            let mut img = image::RgbImage::new(w as u32 * s, h as u32 * 2 * s);
+            for (i, c) in buf.content.iter().enumerate() {
+                let (x, y) = (i as u32 % w as u32, i as u32 / w as u32);
+                let (top, bot) = match c.symbol() {
+                    "▀" => (px(c.fg), px(c.bg)),
+                    " " => (px(c.bg), px(c.bg)),
+                    _ => (px(c.fg), px(c.bg)),
+                };
+                for dy in 0..2 * s {
+                    for dx in 0..s {
+                        let col = if dy < s { top } else { bot };
+                        img.put_pixel(x * s + dx, y * 2 * s + dy, col);
+                    }
+                }
+            }
+            img.save(format!("{dir}/preview_{item}.png").replace(['@', ','], "_"))
+                .unwrap();
+        }
+    }
+}

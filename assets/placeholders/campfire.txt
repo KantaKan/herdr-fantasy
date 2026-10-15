@@ -1,0 +1,27 @@
+# tag burn 160
+....o...
+...oo...
+..oyoo..
+..oyyo..
+.oywyyo.
+.oywwyo.
+SrSSSSrS
+.kSkkSk.
+
+...o....
+...oo...
+..ooyo..
+..oyyo..
+.oyywyo.
+.oywwyo.
+SrSSSSrS
+.kSkkSk.
+
+........
+....o...
+...oyo..
+..oyyo..
+.oyyyyo.
+.oywwyo.
+SrSSSSrS
+.kSkkSk.
