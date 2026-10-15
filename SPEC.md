@@ -315,6 +315,15 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 | **Build Wyrm** | `cargo build`, `cargo check`, `tsc`, `npm run build`, `pnpm build`, `go build`, `make`, `vite build`, `next build` |
 | **Lint Imp** | `cargo clippy`, `eslint`, `biome`, `ruff`, `golangci-lint`, `prettier --check` |
 
+- **Species**: each kind has a roster; the species is a stable hash (FNV-1a) of the command text, so the same command always summons the same nemesis.
+
+| Kind | Roster |
+|---|---|
+| Test | Test Golem, Flaky Ghost, Snapshot Mimic |
+| Build | Build Wyrm, Linker Kraken, Dependency Hydra |
+| Lint | Lint Imp, Typo Gremlin, Off-by-One Slime King |
+
+- **Size tier** follows the command's scope: whole-repo flags (`--workspace`, `--all`, `--all-targets`, `--all-features`, `--recursive`, `-r`) → **Big**; a narrowed run (a token with `::` or `/`, a source file, or `-k` / `--test` / `-run` / `-t` / `--grep`) → **Little**; otherwise **Normal**. If the tier doesn't fit the scene height, it drops a tier.
 - The quest line shows the boss name + HP while a boss is present (instead of the quest timer).
 - Outcome: matching `tool_result` with `is_error = false` = victory, `is_error = true` = boss survives and laughs. ⚠️ verify that a non-zero exit sets `is_error` for both Bash and PowerShell; if not, parse the exit code from the result text.
 - Boss HP is cosmetic: starts full; each failed attempt knocks off 25% (so persistence visibly pays off); victory always finishes it.

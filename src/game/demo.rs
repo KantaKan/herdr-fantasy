@@ -3,6 +3,7 @@
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
+use super::boss::BossKind;
 use super::hero::{Action, Class, Status};
 use super::world::{GameEvent as E, World};
 
@@ -22,7 +23,21 @@ pub struct Demo {
     script: Vec<(u64, E)>,
     loop_ms: u64,
     next_act: Vec<u64>,
+    loops: usize,
 }
+
+/// One boss command per demo loop, so the roster and size tiers all show up.
+const BOSSES: [(BossKind, &str); 6] = [
+    (BossKind::Test, "cargo test"),
+    (BossKind::Build, "cargo build --workspace"),
+    (BossKind::Lint, "cargo clippy src/auth.rs"),
+    (BossKind::Test, "pytest -k login"),
+    (BossKind::Build, "tsc"),
+    (BossKind::Lint, "eslint --all"),
+];
+
+/// Placeholder detail in the script, replaced by "running <this loop's boss command>".
+const BOSS_CMD: &str = "{boss}";
 
 const FILES: [&str; 5] = [
     "src/auth.rs",
@@ -48,14 +63,14 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         w.add_hero("Codex", class_of(classes, "codex")),
         w.add_hero("OpenCode", class_of(classes, "opencode")),
     );
-    let test = || Some("running cargo test".to_string());
+    let test = || Some(BOSS_CMD.to_string());
     let script = vec![
         (0, E::QuestStart("fix login redirect bug".into())),
         (0, E::Status(k, Status::Working)),
         (0, E::Status(m, Status::Working)),
         (0, E::Status(r, Status::Idle)),
         (0, E::ContextUsed(k, Some(35))),
-        (8_000, E::BossEnter),
+        (8_000, E::BossEnter(BossKind::Test, String::new())),
         (8_000, E::Act(k, Action::Cast, test())),
         (9_500, E::BossFail),
         (9_500, E::Xp(k, 5)),
@@ -90,6 +105,7 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         script,
         loop_ms: 42_000,
         next_act: vec![1_000; w.heroes.len()],
+        loops: 0,
     };
     (w, demo)
 }
@@ -103,7 +119,15 @@ impl Demo {
             if *at > self.t {
                 break;
             }
-            w.apply(ev.clone());
+            let (kind, cmd) = BOSSES[self.loops % BOSSES.len()];
+            let ev = match ev.clone() {
+                E::BossEnter(..) => E::BossEnter(kind, cmd.to_string()),
+                E::Act(i, a, Some(d)) if d == BOSS_CMD => {
+                    E::Act(i, a, Some(format!("running {cmd}")))
+                }
+                ev => ev,
+            };
+            w.apply(ev);
             self.idx += 1;
         }
         for i in 0..w.heroes.len() {
@@ -127,6 +151,7 @@ impl Demo {
         if self.t >= self.loop_ms {
             self.t -= self.loop_ms;
             self.idx = 0;
+            self.loops += 1;
             self.next_act.iter_mut().for_each(|n| *n = self.t + 1_000);
         }
     }
@@ -169,6 +194,21 @@ mod tests {
         assert_eq!(class_of(&c, "grok"), Class::Bard);
         c.insert("default".into(), "Cleric".into());
         assert_eq!(class_of(&c, "grok"), Class::Cleric);
+    }
+
+    #[test]
+    fn each_loop_brings_a_new_boss() {
+        let (mut w, mut d) = party(1, &crate::config::Config::default().classes);
+        let mut seen = Vec::new();
+        for _ in 0..(3 * 42_000 / 66) {
+            d.advance(66, &mut w);
+            if let Some(b) = &w.boss
+                && seen.last() != Some(&(b.id, b.tier))
+            {
+                seen.push((b.id, b.tier));
+            }
+        }
+        assert_eq!(seen.len(), 3, "{seen:?}");
     }
 
     #[test]

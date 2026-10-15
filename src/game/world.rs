@@ -1,6 +1,7 @@
 //! The game state the renderer draws. Everything enters through `GameEvent`, so demo,
 //! herdr (M2), and transcripts (M4) all drive the same code.
 
+use super::boss::{self, BossKind, Tier};
 use super::hero::{Action, Class, Hero, Status};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -9,7 +10,8 @@ pub enum GameEvent {
     Act(usize, Action, Option<String>),
     QuestStart(String),
     QuestEnd,
-    BossEnter,
+    /// A boss command started (kind from the classifier, the command text).
+    BossEnter(BossKind, String),
     /// The boss command failed: boss laughs and loses 25% HP.
     BossFail,
     /// The boss command succeeded.
@@ -28,7 +30,9 @@ pub enum BossState {
 #[derive(Debug, Clone)]
 pub struct Boss {
     pub name: &'static str,
-    pub sheet: &'static str,
+    /// Sprite id; sheets are `boss_<id>_<tier>`.
+    pub id: &'static str,
+    pub tier: Tier,
     /// Cosmetic HP percent (SPEC §6.3).
     pub hp: u8,
     pub state: BossState,
@@ -40,10 +44,12 @@ const LAUGH_MS: u64 = 1200;
 const DYING_MS: u64 = 1200;
 
 impl Boss {
-    pub fn test_golem() -> Self {
+    pub fn new(kind: BossKind, command: &str) -> Self {
+        let s = boss::species(kind, command);
         Boss {
-            name: "Test Golem",
-            sheet: "test_golem",
+            name: s.name,
+            id: s.id,
+            tier: boss::tier(command),
             hp: 100,
             state: BossState::Idle,
             state_ms: 0,
@@ -151,7 +157,7 @@ impl World {
                 })
             }
             GameEvent::QuestEnd => self.quest = None,
-            GameEvent::BossEnter => self.boss = Some(Boss::test_golem()),
+            GameEvent::BossEnter(kind, cmd) => self.boss = Some(Boss::new(kind, &cmd)),
             GameEvent::BossFail => {
                 if let Some(b) = &mut self.boss {
                     b.fail();
@@ -207,7 +213,7 @@ mod tests {
     #[test]
     fn boss_fails_never_kill_and_defeat_finishes() {
         let mut w = World::new("r", "t");
-        w.apply(GameEvent::BossEnter);
+        w.apply(GameEvent::BossEnter(BossKind::Test, "cargo test".into()));
         for _ in 0..5 {
             w.apply(GameEvent::BossFail);
         }

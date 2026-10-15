@@ -187,7 +187,16 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
 
     let right = scene.width as i32;
     if let Some(b) = &w.boss {
-        let s = sheet(b.sheet);
+        // Drop a size tier until the boss fits under the sky.
+        let room = (scene.height as i32 - 1) * 2;
+        let mut tier = b.tier;
+        let mut s = sheet(&format!("boss_{}_{}", b.id, tier.id()));
+        while (s.frames[0].h as i32) > room
+            && let Some(t) = tier.smaller()
+        {
+            tier = t;
+            s = sheet(&format!("boss_{}_{}", b.id, tier.id()));
+        }
         let f = s.frame(b.tag(), b.state_ms);
         halfblock::draw(
             buf,

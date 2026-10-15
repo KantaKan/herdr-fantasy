@@ -63,6 +63,7 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** in a Claude Code pane, reading files opens chests and edits swing swords with line-count damage within 1 s; restarting the stage doesn't replay old actions; `/clear` starts a new Chapter.
 
 ## M5 — Bosses
+- [x] Boss roster, species pick, and size tiers in `game/boss.rs` (SPEC §6.3) — landed early, with 27 placeholder sprites.
 - [ ] `game/boss.rs` classifier (SPEC §6.3) with user rules from config. Unit tests for every built-in pattern.
 - [ ] Boss enter/battle/victory/laugh flow, cosmetic HP, first-try + persistence bonuses.
 - [ ] Verify that `is_error` marks failed Bash and PowerShell runs; update SPEC §6.3.

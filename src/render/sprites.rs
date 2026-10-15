@@ -138,7 +138,27 @@ mod tests {
             assert_eq!(sheet(&format!("face_{class}")).frames[0].w, 8);
         }
         assert_eq!(sheet("slime").frames[0].w, 10);
-        assert_eq!(sheet("test_golem").frames[0].w, 24);
+        for id in [
+            "test_golem",
+            "flaky_ghost",
+            "snapshot_mimic",
+            "build_wyrm",
+            "linker_kraken",
+            "dependency_hydra",
+            "lint_imp",
+            "typo_gremlin",
+            "slime_king",
+        ] {
+            for (tier, h) in [("little", 12), ("normal", 20), ("big", 28)] {
+                let s = sheet(&format!("boss_{id}_{tier}"));
+                assert_eq!(s.frames[0].h, h);
+                assert!(
+                    ["idle", "laugh", "die"]
+                        .iter()
+                        .all(|t| s.tags.contains_key(*t))
+                );
+            }
+        }
         assert_eq!(sheet("rubber_duck").frames[0].w, 8);
     }
 
