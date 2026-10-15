@@ -1,0 +1,47 @@
+# tag idle 300
+...kkkk...
+..kgGGgk..
+.kgGgggggk
+kgwkggwkgk
+kgggggggdk
+kggggggtdk
+.kttttttdk
+..kkkkkkk.
+
+..........
+...kkkk...
+..kgGGgk..
+.kgGgggggk
+kgwkggwkgk
+kgggggggdk
+kggggggtdk
+..kkkkkkk.
+
+# tag hurt 100
+...wwww...
+..wwwwww..
+.wwwwwwwww
+wwwwwwwwww
+wwwwwwwwww
+wwwwwwwwww
+.wwwwwwwww
+..wwwwwww.
+
+# tag die 120
+..........
+..........
+..........
+..........
+.kgGggggk.
+kgggggggdk
+.kttttttk.
+..kkkkkk..
+
+..........
+..........
+..........
+..........
+..........
+..........
+g..G..g..g
+.t..g..t..

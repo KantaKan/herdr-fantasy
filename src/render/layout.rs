@@ -1,0 +1,371 @@
+//! Stage layouts by pane size (SPEC §5.2–5.3): full / compact / mini.
+
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::style::{Color, Modifier, Style};
+
+use super::halfblock::{self, rgb};
+use super::sprites::sheet;
+use crate::game::hero::{Anim, Hero, Status};
+use crate::game::world::World;
+use crate::game::xp::xp_to_next;
+use crate::palette;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    Full,
+    Compact,
+    Mini,
+}
+
+/// Scene rows needed: 16 px hero = 8 rows + ground; 8 px face = 4 rows + ground.
+const FULL_SCENE: u16 = 9;
+const COMPACT_SCENE: u16 = 5;
+const MAX_DRAWN: usize = 4;
+
+fn footer_rows(w: &World) -> u16 {
+    w.heroes.len().clamp(1, MAX_DRAWN) as u16
+}
+
+pub fn mode(area: Rect, w: &World) -> Mode {
+    let chrome = 2 + footer_rows(w);
+    if area.height >= chrome + FULL_SCENE && area.width >= 40 {
+        Mode::Full
+    } else if area.height >= chrome + COMPACT_SCENE && area.width >= 30 {
+        Mode::Compact
+    } else {
+        Mode::Mini
+    }
+}
+
+fn c(key: char) -> Color {
+    rgb(palette::rgb(key))
+}
+
+fn text(buf: &mut Buffer, x: u16, y: u16, max_x: u16, s: &str, fg: char, bg: char) -> u16 {
+    if x >= max_x {
+        return x;
+    }
+    let style = Style::default().fg(c(fg)).bg(c(bg));
+    buf.set_stringn(x, y, s, (max_x - x) as usize, style).0
+}
+
+pub fn render(w: &World, area: Rect, buf: &mut Buffer) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    halfblock::fill(buf, area, c('d'));
+    match mode(area, w) {
+        Mode::Mini => mini(w, area, buf),
+        m => {
+            top_bar(w, area, buf, area.y);
+            quest_line(w, area, buf, area.y + 1);
+            let footer = footer_rows(w);
+            let scene = Rect::new(area.x, area.y + 2, area.width, area.height - 2 - footer);
+            if m == Mode::Full {
+                full_scene(w, scene, buf);
+            } else {
+                compact_scene(w, scene, buf);
+            }
+            for (i, h) in w.heroes.iter().take(MAX_DRAWN).enumerate() {
+                footer_row(h, area, buf, scene.bottom() + i as u16);
+            }
+        }
+    }
+}
+
+fn top_bar(w: &World, area: Rect, buf: &mut Buffer, y: u16) {
+    let right = format!(" Party Lv.{} ", w.party_level());
+    let rx = area.right().saturating_sub(right.chars().count() as u16);
+    let x = text(buf, area.x, y, rx, " herdr fantasy", 'w', 'd');
+    text(
+        buf,
+        x,
+        y,
+        rx,
+        &format!(" · {} · {}", w.repo, w.theme),
+        's',
+        'd',
+    );
+    text(buf, rx, y, area.right(), &right, 'y', 'd');
+}
+
+fn quest_line(w: &World, area: Rect, buf: &mut Buffer, y: u16) {
+    let right = if let Some(b) = &w.boss {
+        let filled = (b.hp as usize).div_ceil(25);
+        format!(
+            " {} {}{} ",
+            b.name,
+            "█".repeat(filled * 2),
+            "░".repeat(8 - filled * 2)
+        )
+    } else if let Some(q) = &w.quest {
+        let s = q.elapsed_ms / 1000;
+        format!(" ⏱ {:02}:{:02} ", s / 60, s % 60)
+    } else {
+        String::new()
+    };
+    let rx = area.right().saturating_sub(right.chars().count() as u16);
+    match &w.quest {
+        Some(q) => text(
+            buf,
+            area.x,
+            y,
+            rx,
+            &format!(" ⚔ Quest: {}", q.title),
+            'w',
+            'd',
+        ),
+        None => text(
+            buf,
+            area.x,
+            y,
+            rx,
+            " ⚔ No quest — the party rests",
+            's',
+            'd',
+        ),
+    };
+    let fg = if w.boss.is_some() { 'r' } else { 's' };
+    text(buf, rx, y, area.right(), &right, fg, 'd');
+}
+
+/// Sky, then a strip of grass that scrolls while anyone walks.
+fn backdrop(w: &World, scene: Rect, buf: &mut Buffer) {
+    halfblock::fill(buf, scene, c('n'));
+    let gy = scene.bottom() - 1;
+    let walking = w.heroes.iter().any(|h| h.anim() == Anim::Walk);
+    let scroll = if walking {
+        (w.clock_ms / 120) as u16
+    } else {
+        0
+    };
+    for x in scene.left()..scene.right() {
+        let tuft = (x + scroll) % 7 == 0;
+        let cell = &mut buf[(x, gy)];
+        cell.set_symbol("▀");
+        cell.set_fg(c(if tuft { 'G' } else { 'g' }));
+        cell.set_bg(c('t'));
+    }
+}
+
+/// Pixel row where a sprite of height `h` stands on the ground.
+fn stand_y(scene: Rect, h: u16) -> i32 {
+    (scene.height as i32 - 1) * 2 - h as i32
+}
+
+fn badge(h: &Hero) -> Option<(&'static str, char)> {
+    match h.status {
+        Status::Blocked => Some(("❗", 'r')),
+        Status::Done => Some(("★", 'y')),
+        _ => None,
+    }
+}
+
+fn plus_n(w: &World, scene: Rect, buf: &mut Buffer, x: u16, drawn: usize) {
+    if w.heroes.len() > drawn {
+        let s = format!("+{}", w.heroes.len() - drawn);
+        text(buf, scene.x + x, scene.y, scene.right(), &s, 'w', 'n');
+    }
+}
+
+fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
+    backdrop(w, scene, buf);
+    const STEP: u16 = 17;
+    let enemy_zone = 28;
+    let slots = (scene.width.saturating_sub(enemy_zone + 1) / STEP).clamp(1, MAX_DRAWN as u16);
+    let drawn = w.heroes.len().min(slots as usize);
+    for (i, h) in w.heroes.iter().take(drawn).enumerate() {
+        let x = 1 + i as u16 * STEP;
+        let f = sheet(&format!("hero_{}", h.class.id())).frame(h.anim().tag(), h.anim_ms);
+        halfblock::draw(buf, scene, f, x as i32, stand_y(scene, f.h), false);
+        if let Some((s, fg)) = badge(h) {
+            text(buf, scene.x + x + 12, scene.y, scene.right(), s, fg, 'n');
+        }
+    }
+    plus_n(w, scene, buf, 1 + drawn as u16 * STEP, drawn);
+
+    let right = scene.width as i32;
+    if let Some(b) = &w.boss {
+        let s = sheet(b.sheet);
+        let f = s.frame(b.tag(), b.state_ms);
+        halfblock::draw(
+            buf,
+            scene,
+            f,
+            right - f.w as i32 - 2,
+            stand_y(scene, f.h),
+            false,
+        );
+    } else {
+        let hit = w.heroes.iter().any(|h| h.anim() == Anim::Attack);
+        slimes(w, scene, buf, right, 2, hit);
+    }
+}
+
+fn slimes(w: &World, scene: Rect, buf: &mut Buffer, right: i32, n: i32, hit: bool) {
+    let s = sheet("slime");
+    for i in 0..n {
+        let tag = if hit && i == 0 { "hurt" } else { "idle" };
+        // Offset each slime's clock so they don't bounce in lockstep.
+        let f = s.frame(tag, w.clock_ms + i as u64 * 170);
+        let x = right - (n - i) * (f.w as i32 + 2);
+        halfblock::draw(buf, scene, f, x, stand_y(scene, f.h), true);
+    }
+}
+
+fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
+    backdrop(w, scene, buf);
+    const STEP: u16 = 10;
+    let slots = (scene.width.saturating_sub(14) / STEP).clamp(1, MAX_DRAWN as u16);
+    let drawn = w.heroes.len().min(slots as usize);
+    for (i, h) in w.heroes.iter().take(drawn).enumerate() {
+        let x = 1 + i as u16 * STEP;
+        // Faces only have `idle`; anything but sitting bobs at walk pace.
+        let ms = if h.anim() == Anim::Sit {
+            0
+        } else {
+            h.anim_ms * 2
+        };
+        let f = sheet(&format!("face_{}", h.class.id())).frame("idle", ms);
+        halfblock::draw(buf, scene, f, x as i32, stand_y(scene, f.h), false);
+        if let Some((s, fg)) = badge(h) {
+            text(buf, scene.x + x + 7, scene.y, scene.right(), s, fg, 'n');
+        }
+    }
+    plus_n(w, scene, buf, 1 + drawn as u16 * STEP, drawn);
+    let hit = w.heroes.iter().any(|h| h.anim() == Anim::Attack);
+    slimes(w, scene, buf, scene.width as i32, 1, hit);
+}
+
+fn bar(filled: usize, total: usize) -> (String, String) {
+    let f = filled.min(total);
+    ("▓".repeat(f), "░".repeat(total - f))
+}
+
+fn activity(h: &Hero) -> String {
+    match h.status {
+        Status::Blocked => "❗ needs you".into(),
+        Status::Done => "★ quest complete!".into(),
+        Status::Idle => "resting by the fire".into(),
+        Status::Working => h.detail.clone().unwrap_or_else(|| "fighting slimes".into()),
+    }
+}
+
+fn xp_cells(h: &Hero, cells: usize) -> usize {
+    (h.xp as usize * cells) / xp_to_next(h.level) as usize
+}
+
+/// `Claude    Lv7  ▓▓▓▓▓▓░░ XP  STA ▓▓▓▓░  62%  editing src/auth.rs`
+fn footer_row(h: &Hero, area: Rect, buf: &mut Buffer, y: u16) {
+    let end = area.right();
+    let mut x = text(buf, area.x, y, end, " ", 'w', 'd');
+    x = text(
+        buf,
+        x,
+        y,
+        end,
+        &format!("{:<9.9}", h.name),
+        h.class.color(),
+        'd',
+    );
+    x = text(buf, x, y, end, &format!(" Lv{:<3}", h.level), 'w', 'd');
+    let (f, e) = bar(xp_cells(h, 8), 8);
+    x = text(buf, x, y, end, &f, 'y', 'd');
+    x = text(buf, x, y, end, &e, 'S', 'd');
+    x = text(buf, x, y, end, " XP ", 's', 'd');
+    if area.width >= 50 {
+        x = text(buf, x, y, end, " STA ", 's', 'd');
+        match h.context_used {
+            Some(used) => {
+                let left = 100 - used as usize;
+                let col = match used {
+                    90.. => 'r',
+                    70.. => 'o',
+                    _ => 'c',
+                };
+                let (f, e) = bar(left.div_ceil(20), 5);
+                x = text(buf, x, y, end, &f, col, 'd');
+                x = text(buf, x, y, end, &e, 'S', 'd');
+                x = text(buf, x, y, end, &format!(" {left:>3}% "), 's', 'd');
+            }
+            None => x = text(buf, x, y, end, "  ?        ", 's', 'd'),
+        }
+    }
+    if area.width >= 36 {
+        let fg = if h.status == Status::Blocked {
+            'r'
+        } else {
+            'w'
+        };
+        text(buf, x, y, end, &format!(" {}", activity(h)), fg, 'd');
+    }
+}
+
+/// One line per hero; the state icon still animates (SPEC §5.3).
+fn mini(w: &World, area: Rect, buf: &mut Buffer) {
+    let n = w.heroes.len() as u16;
+    let mut y = area.y;
+    if area.height > n {
+        top_bar(w, area, buf, y);
+        y += 1;
+    }
+    let t = w.clock_ms;
+    for h in &w.heroes {
+        if y >= area.bottom() {
+            break;
+        }
+        let blink = |ms: u64| (t / ms).is_multiple_of(2);
+        let icon = match h.status {
+            Status::Working => {
+                if blink(250) {
+                    "⚔"
+                } else {
+                    "✦"
+                }
+            }
+            Status::Blocked => {
+                if blink(500) {
+                    "❗"
+                } else {
+                    "  "
+                }
+            }
+            Status::Done => {
+                if blink(300) {
+                    "★"
+                } else {
+                    "☆"
+                }
+            }
+            Status::Idle => {
+                if blink(600) {
+                    "z"
+                } else {
+                    "Z"
+                }
+            }
+        };
+        let end = area.right();
+        let initial = h.name.chars().next().unwrap_or('?').to_string();
+        let mut x = text(buf, area.x, y, end, " ", 'w', 'd');
+        x = text(buf, x, y, end, &initial, h.class.color(), 'd');
+        x = text(buf, x, y, end, " ", 'w', 'd');
+        x = text(buf, x, y, end, &format!("{icon:<2}"), 'y', 'd');
+        let (f, e) = bar(xp_cells(h, 6), 6);
+        x = text(buf, x, y, end, &f, 'y', 'd');
+        x = text(buf, x, y, end, &e, 'S', 'd');
+        let style = Style::default().fg(c('w')).bg(c('d'));
+        let line = format!(" {} Lv{} {}", h.name, h.level, activity(h));
+        if x < end {
+            buf.set_stringn(
+                x,
+                y,
+                line,
+                (end - x) as usize,
+                style.remove_modifier(Modifier::all()),
+            );
+        }
+        y += 1;
+    }
+}

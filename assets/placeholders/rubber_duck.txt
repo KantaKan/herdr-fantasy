@@ -1,0 +1,37 @@
+# tag idle 500
+..kkk...
+.kyyyk..
+.kykykoo
+kkyyyykk
+kyyyyyyk
+kyyyyyyk
+.kyyyyk.
+..kkkk..
+
+........
+..kkk...
+.kyyyk..
+.kykykoo
+kkyyyykk
+kyyyyyyk
+kyyyyyyk
+.kyyyyk.
+
+# tag quack 180
+..kkk...
+.kyyyk.o
+.kykykoo
+kkyyyykk
+kyyyyyyk
+kyyyyyyk
+.kyyyyk.
+..kkkk..
+
+..kkk...
+.kyyyk..
+.kykykoo
+kkyyyykk
+kyyyyyyk
+kyyyyyyk
+.kyyyyk.
+..kkkk..

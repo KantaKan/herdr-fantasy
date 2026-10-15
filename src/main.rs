@@ -1,5 +1,8 @@
 mod config;
+mod game;
 mod logging;
+mod palette;
+mod render;
 
 use clap::{Parser, Subcommand};
 
@@ -53,12 +56,26 @@ enum Command {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let _log_guard = logging::init();
-    let (_config, warnings) = config::load();
+    let (config, warnings) = config::load();
     for w in &warnings {
         tracing::warn!("config: {w}");
     }
 
     let name = match cli.command {
+        Command::Stage {
+            demo: true,
+            scenario,
+            seed,
+            speed,
+            ..
+        } => {
+            let seed = seed.unwrap_or_else(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_nanos() as u64)
+            });
+            return render::run_demo(&scenario, seed, speed, &config.classes);
+        }
         Command::Stage { .. } => "stage",
         Command::Ask { .. } => "ask",
         Command::Autostart => "autostart",

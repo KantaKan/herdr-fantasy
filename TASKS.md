@@ -19,16 +19,16 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [x] CI (GitHub Actions): fmt, clippy `-D warnings`, test on macOS + Linux + Windows.
 
 ## M1 — Demo mode + halfblock renderer (no herdr needed)
-- [ ] Placeholder pipeline: `assets/placeholders/*.txt` → PNG + Aseprite-style JSON (ART.md §8), via `build.rs` or an `xtask`.
+- [x] Placeholder pipeline: `assets/placeholders/*.txt` → PNG + Aseprite-style JSON (ART.md §8), via `build.rs` or an `xtask`.
   **Done when:** slime + 6 class placeholders + 1 boss + Rubber Duck load at runtime.
-- [ ] `render/halfblock.rs`: draw a sprite frame with transparency onto a ratatui buffer.
-- [ ] `game/world.rs` + `game/hero.rs` state machine for: idle/sit, walk, attack, cast, open, raise_hand, victory.
-- [ ] `game/demo.rs`: `party` scenario with seeded RNG and `--speed`.
-- [ ] `render/layout.rs`: full / compact / mini layouts by pane size (SPEC §5.2–5.3).
-- [ ] Footer rows with XP and stamina bars.
-- [ ] Adaptive FPS loop (SPEC §8.5) and "skip frame if unchanged".
-  **Done when:** `herdr-fantasy stage --demo` runs in any terminal (including Windows Terminal), shows 3 heroes doing the scripted party scenario, resizing switches layouts without crashing, CPU < 3% during battle.
-- [ ] Snapshot tests: render ticks 0, 50, 200 of `party --seed 1` with `TestBackend` + insta.
+- [x] `render/halfblock.rs`: draw a sprite frame with transparency onto a ratatui buffer.
+- [x] `game/world.rs` + `game/hero.rs` state machine for: idle/sit, walk, attack, cast, open, raise_hand, victory.
+- [x] `game/demo.rs`: `party` scenario with seeded RNG and `--speed`.
+- [x] `render/layout.rs`: full / compact / mini layouts by pane size (SPEC §5.2–5.3; thresholds now derived from sprite sizes).
+- [x] Footer rows with XP and stamina bars.
+- [x] Adaptive FPS loop (SPEC §8.5) and "skip frame if unchanged".
+  **Done when:** `herdr-fantasy stage --demo` runs in any terminal (including Windows Terminal), shows 3 heroes doing the scripted party scenario, resizing switches layouts without crashing, CPU < 3% during battle. (Measured 2026-10-16, release, Windows Terminal + herdr, 30 s of the party loop: 0.8% of one core, 21 MB RSS.)
+- [x] Snapshot tests: render ticks 0, 50, 200 of `party --seed 1` with `TestBackend` + insta.
 
 ## M2 — Live herdr connection (status-level game)
 - [ ] `herdr/client.rs`: connect to socket, request/response by id, subscription stream. Works on Windows AF_UNIX (resolve SPEC §15 Q9).

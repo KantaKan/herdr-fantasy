@@ -1,0 +1,32 @@
+//! Sweetie 16 (ART.md §2). Shared by `build.rs` (placeholder → PNG) and the renderer.
+
+pub const PALETTE: [(char, [u8; 3]); 16] = [
+    ('k', [0x1a, 0x1c, 0x2c]),
+    ('p', [0x5d, 0x27, 0x5d]),
+    ('r', [0xb1, 0x3e, 0x53]),
+    ('o', [0xef, 0x7d, 0x57]),
+    ('y', [0xff, 0xcd, 0x75]),
+    ('G', [0xa7, 0xf0, 0x70]),
+    ('g', [0x38, 0xb7, 0x64]),
+    ('t', [0x25, 0x71, 0x79]),
+    ('n', [0x29, 0x36, 0x6f]),
+    ('b', [0x3b, 0x5d, 0xc9]),
+    ('c', [0x41, 0xa6, 0xf6]),
+    ('C', [0x73, 0xef, 0xf7]),
+    ('w', [0xf4, 0xf4, 0xf4]),
+    ('s', [0x94, 0xb0, 0xc2]),
+    ('S', [0x56, 0x6c, 0x86]),
+    ('d', [0x33, 0x3c, 0x57]),
+];
+
+/// RGB for a palette key. Panics on an unknown key (a bug in our own art or code).
+pub const fn rgb(key: char) -> [u8; 3] {
+    let mut i = 0;
+    while i < PALETTE.len() {
+        if PALETTE[i].0 == key {
+            return PALETTE[i].1;
+        }
+        i += 1;
+    }
+    panic!("not a Sweetie 16 key")
+}

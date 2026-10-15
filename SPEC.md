@@ -210,7 +210,7 @@ command = ["./target/release/herdr-fantasy", "ask"]
 - `auto_open = "first_workspace"` or `"off"` are supported.
 - Never open twice. Never move focus. If the workspace is too small (< 24 rows total), skip and log.
 
-### 5.2 Stage layout (full mode, ≥ 12 rows × 70 cols)
+### 5.2 Stage layout (full mode)
 
 ```
 ┌ herdr fantasy · gymnimal ·  Forge Village ───────────── Party Lv.9 ─┐
@@ -226,14 +226,15 @@ command = ["./target/release/herdr-fantasy", "ask"]
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
+- Mode is chosen from what fits (measured at M1): chrome = top bar + quest line + one footer row per drawn hero (max 4). **Full** needs chrome + 9 scene rows (16 px hero = 8 rows + ground) and ≥ 40 cols — 14 rows for 3 heroes. **Compact** needs chrome + 5 scene rows (8 px face = 4 rows + ground) and ≥ 30 cols — 10 rows for 3 heroes. Otherwise **Mini**. Heroes drawn = what fits the width (17 cols each in full, 10 in compact), rest as `+N`.
 - Top bar: repo name, town theme name, party level (sum of hero levels / count, rounded). Each Hero carries its own repo's progress; if the Party spans several repos, the top bar shows the repo with the most Heroes (ties → most recently active).
 - Quest line: current quest title of the **focused or most recently active** hero.
 - Scene: heroes left, enemies right. Max 4 heroes drawn; extra shown as `+N`. Up to 3 Summons drawn small beside their Hero, extra as `+N`. The Rubber Duck sits by the campfire.
 - Footer: one row per hero: name, level, XP bar, stamina bar, current activity text.
 - Keys inside stage (only when stage pane is focused): `t` town, `q` quest log, `c` character sheet of selected hero, `←/→` select hero, `Enter` focus that agent's pane, `?` help, `Esc` back to battle.
 
-### 5.3 Compact mode (8–11 rows) and mini mode (< 8 rows)
-- Compact: smaller scene (heroes as 8×8 faces), footer kept.
+### 5.3 Compact mode and mini mode (thresholds in §5.2)
+- Compact: smaller scene (heroes as 8×8 faces), footer kept. The boss isn't drawn; its name + HP stay on the quest line.
 - Mini: no scene. One line per hero: face glyph, state icon, XP bar, activity. Still animates the face glyph.
 - Width < 50 cols: drop stamina bar text, then activity text.
 
@@ -314,7 +315,8 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 | **Build Wyrm** | `cargo build`, `cargo check`, `tsc`, `npm run build`, `pnpm build`, `go build`, `make`, `vite build`, `next build` |
 | **Lint Imp** | `cargo clippy`, `eslint`, `biome`, `ruff`, `golangci-lint`, `prettier --check` |
 
-- Outcome: matching `tool_result` with `is_error = false` = victory, `is_error = true` = boss survives (laughs, HP stays). ⚠️ verify that a non-zero exit sets `is_error` for both Bash and PowerShell; if not, parse the exit code from the result text.
+- The quest line shows the boss name + HP while a boss is present (instead of the quest timer).
+- Outcome: matching `tool_result` with `is_error = false` = victory, `is_error = true` = boss survives and laughs. ⚠️ verify that a non-zero exit sets `is_error` for both Bash and PowerShell; if not, parse the exit code from the result text.
 - Boss HP is cosmetic: starts full; each failed attempt knocks off 25% (so persistence visibly pays off); victory always finishes it.
 - "First-try" = victory without a failure on the same boss type within the same quest.
 
@@ -524,7 +526,7 @@ state/
 ---
 
 ## 15. Open questions to verify during implementation
-1. Exact CLI flags for `herdr plugin pane open` (split direction, ratio, no-focus).
+1. Exact CLI flags for `herdr plugin pane open` (split direction, ratio, no-focus). Partial: `herdr pane split` has `--direction right|down`, `--ratio <f>` (sizes the new pane), `--focus` / `--no-focus`, `--cwd`, `--env`; check whether `plugin pane open` takes the same.
 2. How to detect an existing stage pane (plugin ownership in `pane.list`?).
 3. Behavior of plugin panes after herdr server restart / live handoff.
 4. Whether `agent_session` updates emit `pane.updated` / `pane.agent_status_changed` (otherwise poll `agent.list` every 2 s while any hero is working).
