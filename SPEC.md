@@ -198,7 +198,7 @@ height = 18
 command = ["./target/release/herdr-fantasy", "ask"]
 ```
 
-⚠️ Verify at implementation time: whether `./target/release/herdr-fantasy` resolves to the `.exe` on Windows (if not, duplicate each entry with `platforms = ["windows"]` and the `.exe` path); exact `herdr plugin pane open` CLI flags for split direction/ratio, whether plugin panes are identifiable in `pane.list` (for "is the stage already open?"), and what happens to plugin panes after a server restart.
+⚠️ Verify at implementation time: exact `herdr plugin pane open` CLI flags for split direction/ratio, whether plugin panes are identifiable in `pane.list` (for "is the stage already open?"), and what happens to plugin panes after a server restart.
 
 ---
 
@@ -531,9 +531,11 @@ state/
 5. Kitty graphics probe results inside herdr panes, locally and over SSH.
 6. Claude transcript field names (tool_use, tool_result `is_error`, usage, compaction marker, subagent tool name `Task` vs `Agent`), and whether a non-zero exit sets `is_error` for Bash and PowerShell.
 7. Herdr agent `agent` field values for each supported agent (for class mapping). Integrations on herdr 0.9.3: pi, omp, claude, codex, copilot, devin, droid, kimi, opencode, kilo, hermes, qodercli, qwen, cursor, mastracode, antigravity-cli, grok, letta.
-8. Windows: does `./target/release/herdr-fantasy` in the manifest resolve to the `.exe`?
-9. Windows: AF_UNIX client for the herdr socket (`uds_windows` vs shelling out to `herdr api`), and whether file-change notifications on transcripts are reliable.
+8. Windows: AF_UNIX client for the herdr socket (`uds_windows` vs shelling out to `herdr api`), and whether file-change notifications on transcripts are reliable.
 
 ### Resolved
 - herdr runs natively on Windows (0.9.3); plugin `platforms` enum = `linux | macos | windows`; socket `%APPDATA%\herdr\herdr.sock`.
 - `AgentInfo.agent_session` carries the transcript path, reported by herdr's own integration hook.
+- Windows: `./target/release/herdr-fantasy` in the manifest runs the `.exe` (verified with `herdr plugin action invoke kantakan.herdr-fantasy.open-ask`, exit 0) — no per-platform manifest entries needed.
+- Windows paths herdr injects: config `%APPDATA%\herdr\plugins\config\<plugin-id>`, state `%LOCALAPPDATA%\herdr\plugins\<plugin-id>`.
+- `herdr plugin action invoke` takes the fully-qualified id (`<plugin-id>.<action-id>`); `herdr plugin log list` shows exit code and stderr.

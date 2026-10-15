@@ -1,0 +1,42 @@
+id = "kantakan.herdr-fantasy"
+name = "herdr fantasy"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Your coding agents as an RPG party"
+platforms = ["linux", "macos", "windows"]
+
+[[build]]
+command = ["cargo", "build", "--release", "--locked"]
+
+[[startup]]
+command = ["./target/release/herdr-fantasy", "autostart"]
+
+[[events]]
+on = "workspace.created"
+command = ["./target/release/herdr-fantasy", "autostart"]
+
+[[actions]]
+id = "open-ask"
+title = "Talk to agent that needs you"
+contexts = ["workspace"]
+command = ["./target/release/herdr-fantasy", "open-ask"]
+
+[[actions]]
+id = "toggle-stage"
+title = "Show/hide the party"
+contexts = ["workspace"]
+command = ["./target/release/herdr-fantasy", "toggle-stage"]
+
+[[panes]]
+id = "stage"
+title = "herdr fantasy"
+placement = "split"
+command = ["./target/release/herdr-fantasy", "stage"]
+
+[[panes]]
+id = "ask"
+title = "An agent needs you"
+placement = "popup"
+width = "70%"
+height = 18
+command = ["./target/release/herdr-fantasy", "ask"]

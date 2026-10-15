@@ -8,15 +8,15 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 ---
 
 ## M0 — Project skeleton
-- [ ] Cargo project `herdr-fantasy`, edition 2021+, `clap` subcommands from SPEC §4 (stubs that print "not implemented").
+- [x] Cargo project `herdr-fantasy`, edition 2021+, `clap` subcommands from SPEC §4 (stubs that print "not implemented").
   **Done when:** `cargo build` passes, `herdr-fantasy --help` lists all subcommands.
-- [ ] Dependencies: tokio, serde, serde_json, toml, clap, anyhow, thiserror, tracing, tracing-appender, ratatui, crossterm, image, tachyonfx, directories, sha2, insta (dev), rand + rand_chacha (seeded).
-- [ ] `herdr-plugin.toml` exactly as SPEC §4.3 (platforms linux/macos/windows). Resolve SPEC §15 Q8 (`.exe` path on Windows).
-  **Done when:** `herdr plugin link .` succeeds with no warnings on Windows and one Unix platform.
-- [ ] `config.rs` with defaults from SPEC §9, per-key fallback on invalid values.
+- [x] Dependencies: tokio, serde, serde_json, toml, clap, anyhow, thiserror, tracing, tracing-appender, ratatui, crossterm, image, tachyonfx, directories, sha2, insta (dev), rand + rand_chacha (seeded). Also tracing-subscriber (needed for file logging); `image` with PNG only.
+- [x] `herdr-plugin.toml` exactly as SPEC §4.3 (platforms linux/macos/windows). Resolved: the `./target/release/…` path works on Windows.
+  **Done when:** `herdr plugin link .` succeeds with no warnings on Windows and one Unix platform. (Windows ✓ 2026-10-16; Unix link still to check on a Mac/Linux box.)
+- [x] `config.rs` with defaults from SPEC §9, per-key fallback on invalid values.
   **Done when:** unit tests cover missing file, partial file, invalid values.
-- [ ] Logging to `$HERDR_PLUGIN_STATE_DIR/logs/` (fallback `~/.local/state/herdr-fantasy/logs/`).
-- [ ] CI (GitHub Actions): fmt, clippy `-D warnings`, test on macOS + Linux + Windows.
+- [x] Logging to `$HERDR_PLUGIN_STATE_DIR/logs/` (fallback `~/.local/state/herdr-fantasy/logs/`).
+- [x] CI (GitHub Actions): fmt, clippy `-D warnings`, test on macOS + Linux + Windows.
 
 ## M1 — Demo mode + halfblock renderer (no herdr needed)
 - [ ] Placeholder pipeline: `assets/placeholders/*.txt` → PNG + Aseprite-style JSON (ART.md §8), via `build.rs` or an `xtask`.
