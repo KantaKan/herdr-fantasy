@@ -69,9 +69,20 @@ pub struct Species {
     pub name: &'static str,
 }
 
+/// Rare boss of any kind: 1 in `RARE_ODDS` commands summon it instead of the roster.
+const RARE: Species = Species {
+    id: "sahur_knocker",
+    name: "Sahur Knocker",
+};
+const RARE_ODDS: u64 = 8;
+
 pub fn species(kind: BossKind, command: &str) -> Species {
+    let h = fnv1a(command.trim());
+    if h.is_multiple_of(RARE_ODDS) {
+        return RARE;
+    }
     let roster = ROSTER.iter().find(|(k, _)| *k == kind).unwrap().1;
-    let (id, name) = roster[(fnv1a(command.trim()) % roster.len() as u64) as usize];
+    let (id, name) = roster[((h / RARE_ODDS) % roster.len() as u64) as usize];
     Species { id, name }
 }
 
@@ -125,7 +136,10 @@ mod tests {
     fn species_stays_in_its_kind() {
         for cmd in ["cargo build", "tsc", "make", "go build ./...", "next build"] {
             let s = species(BossKind::Build, cmd);
-            assert!(ROSTER[1].1.iter().any(|(id, _)| *id == s.id), "{cmd}");
+            assert!(
+                s == RARE || ROSTER[1].1.iter().any(|(id, _)| *id == s.id),
+                "{cmd}"
+            );
         }
     }
 
@@ -137,7 +151,16 @@ mod tests {
                 seen.insert(species(kind, &format!("cmd {i}")).id);
             }
         }
-        assert_eq!(seen.len(), 9);
+        assert_eq!(seen.len(), 10);
+    }
+
+    #[test]
+    fn sahur_knocker_is_rare_but_real() {
+        assert_eq!(species(BossKind::Build, "cargo build --workspace"), RARE);
+        let n = (0..800)
+            .filter(|i| species(BossKind::Test, &format!("cmd {i}")) == RARE)
+            .count();
+        assert!((60..140).contains(&n), "{n} of 800");
     }
 
     #[test]

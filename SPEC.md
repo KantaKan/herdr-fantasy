@@ -322,6 +322,7 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 | Test | Test Golem, Flaky Ghost, Snapshot Mimic |
 | Build | Build Wyrm, Linker Kraken, Dependency Hydra |
 | Lint | Lint Imp, Typo Gremlin, Off-by-One Slime King |
+| Any (rare, 1 in 8 commands) | **Sahur Knocker** — a wooden kentongan log with a bat; original, inspired by the sahur wake-up drum (not the meme character) |
 
 - **Size tier** follows the command's scope: whole-repo flags (`--workspace`, `--all`, `--all-targets`, `--all-features`, `--recursive`, `-r`) → **Big**; a narrowed run (a token with `::` or `/`, a source file, or `-k` / `--test` / `-run` / `-t` / `--grep`) → **Little**; otherwise **Normal**. If the tier doesn't fit the scene height, it drops a tier.
 - The quest line shows the boss name + HP while a boss is present (instead of the quest timer).
@@ -360,7 +361,7 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 ### 6.6 Rubber Duck and Quips
 - One Rubber Duck per Stage, by the campfire. Never levels, never played by an Agent.
 - Triggers (each from real state): a Boss survives ≥ 2 times in a row; a Hero blocked ≥ 5 min; a Quest running ≥ 30 min. At most one Duck Quip per 2 min.
-- Quips are original, text-only lines (no images, no quotes from copyrighted works) in a built-in table keyed by event, e.g. Boss defeated after ≥ 3 failures → "it works on my machine"; `git push --force` → "no fear"; Rest at ≥ 95% context → "I have no memory of this place".
+- Quips are original, text-only lines (no images, no quotes from copyrighted works) in a built-in table keyed by event, e.g. Boss defeated after ≥ 3 failures → "it works on my machine"; `git push --force` → "no fear"; Sahur Knocker laughs → "TUNG TUNG TUNG!"; Rest at ≥ 95% context → "I have no memory of this place".
 - `memes = false` disables all Quips; the Duck still sits there.
 
 ---

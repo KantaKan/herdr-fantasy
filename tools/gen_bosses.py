@@ -195,7 +195,29 @@ def slime_king(c, z, m):
         c.ellipse(0.5, 0.78, 0.16, 0.06, "k")
 
 
+def knocker(c, z, m):
+    """Sahur Knocker: a wooden kentongan log with a bat. Laughs TUNG TUNG TUNG."""
+    c.rect(0.3, 0.06, 0.7, 0.9, "o", "r")              # log body
+    c.ellipse(0.5, 0.08, 0.2, 0.06, "y")               # cut top
+    for y in (0.3, 0.55, 0.78):                         # wood grain
+        c.rect(0.34, y, 0.4, y + 0.02, "r")
+    c.rect(0.33, 0.9, 0.42, 0.99, "r")                 # legs
+    c.rect(0.58, 0.9, 0.67, 0.99, "r")
+    eyes(c, 0.24, (0.38, 0.56), "w", 1 + z // 10)       # big round eyes
+    c.dot(0.42, 0.27, "k")
+    c.dot(0.6, 0.27, "k")
+    c.rect(0.38, 0.44, 0.62, 0.48 if m == "idle" else 0.56, "k")  # grin / yell
+    if m == "laugh":                                     # bat swung down-front
+        c.rect(0.7, 0.5, 0.98, 0.58, "y", "o")
+        c.dot(0.94, 0.4, "w")
+        c.dot(0.98, 0.3, "w")
+    else:                                                # bat held up
+        c.rect(0.76, 0.0, 0.84, 0.5, "y", "o")
+        c.rect(0.7, 0.46, 0.76, 0.52, "o")
+
+
 SPECIES = {
+    "sahur_knocker": knocker,
     "test_golem": golem, "flaky_ghost": ghost, "snapshot_mimic": mimic,
     "build_wyrm": wyrm, "linker_kraken": kraken, "dependency_hydra": hydra,
     "lint_imp": imp, "typo_gremlin": gremlin, "slime_king": slime_king,

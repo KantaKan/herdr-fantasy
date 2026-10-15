@@ -148,6 +148,7 @@ mod tests {
             "lint_imp",
             "typo_gremlin",
             "slime_king",
+            "sahur_knocker",
         ] {
             for (tier, h) in [("little", 12), ("normal", 20), ("big", 28)] {
                 let s = sheet(&format!("boss_{id}_{tier}"));
