@@ -1,8 +1,8 @@
 """Run: python tools/gen_special.py
 
-The Sahur Knight: a hero with its own body, not the shared knight template. A walking
-wooden kentongan drum — a tall log with grain, googly eyes, a wide mouth — wearing a
-little steel knight's cap with a red plume, swinging a thick wooden bat. Original design.
+The Sahur Knight: a hero with its own body, not the shared knight template. A proper
+knight whose helmet is a wooden kentongan drum (the slit of the drum is the visor, with
+glowing eyes behind it), steel armor, a red cape, and a big wooden bat. Original design.
 
 Writes hero_/face_/portrait_sahur_knight.txt with every animation tag the game uses."""
 import os
@@ -44,91 +44,83 @@ class Grid:
         return ["".join(r) for r in self.px]
 
 
-def hero(bob=0, legs="stand", arms="down", bat="shoulder", eyes="open", mouth="smile", lift=0):
-    """One 16x16 frame. `bob` drops the body, `lift` raises the whole hero (jumps)."""
+def hero(bob=0, legs="stand", arms="hold", bat="upright", eyes="open", lift=0, cape=0):
+    """One 16x16 frame of a proper knight: the HELMET is a wooden kentongan drum with a
+    visor slit and glowing eyes; steel armor, red cape, a big wooden bat.
+    `bob` drops the upper body 1 px, `lift` raises everything (jumps), `cape` flutters."""
     g = Grid(16, 16)
-    top = 5 + bob - lift
-    # --- legs (stubby, dark wood)
-    leg_y = 13 - lift
+    dy = bob - lift
+    # --- red cape behind (left side), flutters while running
+    g.rect(3, 8 + dy, 4, 12 + dy - cape, "r")
+    g.set(2, 12 + dy - cape, "p")
+    g.set(3, 13 + dy - cape, "p")
+    # --- legs: steel greaves
+    ly = 12 - lift
     if legs == "stand":
-        g.rect(5, leg_y, 6, leg_y + 2, "r")
-        g.rect(9, leg_y, 10, leg_y + 2, "r")
+        g.rect(5, ly, 6, ly + 3, "S")
+        g.rect(9, ly, 10, ly + 3, "S")
     elif legs == "strideA":
-        g.rect(4, leg_y, 5, leg_y + 1, "r")
-        g.set(3, leg_y + 2, "r")
-        g.rect(10, leg_y, 11, leg_y + 1, "r")
-        g.set(12, leg_y + 2, "r")
+        g.rect(4, ly, 5, ly + 2, "S")
+        g.set(3, ly + 3, "S")
+        g.rect(10, ly, 11, ly + 2, "S")
+        g.set(12, ly + 3, "S")
     elif legs == "strideB":
-        g.rect(6, leg_y, 9, leg_y + 1, "r")
-        g.rect(7, leg_y + 2, 8, leg_y + 2, "r")
+        g.rect(6, ly, 7, ly + 3, "S")
+        g.rect(8, ly, 9, ly + 2, "S")
     elif legs == "sit":
-        g.rect(4, 14, 11, 15, "r")
-    # --- the log body (kentongan): wood with a darker right side and grain
-    body_bottom = (13 if legs != "sit" else 13) + bob - lift
-    if legs == "sit":
-        top += 2
-    g.rect(4, top, 11, body_bottom, "o")
-    g.rect(10, top, 11, body_bottom, "r")
-    for gy in range(top + 6, body_bottom, 3):
-        g.line([(5, gy), (6, gy)], "r")  # grain
-    g.rect(5, body_bottom, 10, body_bottom, "y")  # cut ring at the bottom
-    # --- steel cap with a red plume
-    g.rect(4, top - 1, 11, top, "s")
-    g.rect(5, top - 2, 10, top - 2, "S")
-    g.rect(7, top - 4, 8, top - 3, "r")
-    # --- googly eyes
-    ey = top + 2
+        g.rect(5, 14, 12, 15, "S")
+    sit = 2 if legs == "sit" else 0
+    # --- steel torso, pauldrons, wooden belt, a little gold emblem
+    ty = 8 + dy + sit
+    g.rect(5, ty, 10, ty + 3, "s")
+    g.rect(9, ty, 10, ty + 3, "S")
+    g.rect(4, ty, 4, ty + 1, "S")
+    g.rect(11, ty, 11, ty + 1, "S")
+    g.rect(5, ty + 3, 10, ty + 3, "o")
+    g.set(7, ty + 1, "y")
+    # --- the kentongan drum helmet: wooden cylinder, rim, visor slit, glowing eyes, plume
+    hy = 2 + dy + sit
+    g.rect(4, hy, 11, hy + 5, "o")
+    g.rect(10, hy, 11, hy + 5, "r")
+    g.rect(4, hy + 5, 11, hy + 5, "y")       # rim
+    g.rect(5, hy + 3, 10, hy + 3, "k")       # the drum slit = visor
     if eyes == "open":
-        g.rect(5, ey, 6, ey + 1, "w")
-        g.rect(8, ey, 9, ey + 1, "w")
-        g.set(6, ey + 1, "k")
-        g.set(9, ey + 1, "k")
-    elif eyes == "wide":
-        g.rect(5, ey - 1, 6, ey + 1, "w")
-        g.rect(8, ey - 1, 9, ey + 1, "w")
-        g.set(6, ey, "k")
-        g.set(9, ey, "k")
-    elif eyes == "blink":
-        g.line([(5, ey + 1), (6, ey + 1), (8, ey + 1), (9, ey + 1)], "k")
-    elif eyes == "sleepy":
-        g.line([(5, ey + 1), (6, ey + 1), (8, ey + 1), (9, ey + 1)], "k")
-        g.set(6, ey, "w")
-        g.set(9, ey, "w")
-    # --- mouth
-    my = ey + 4
-    if mouth == "smile":
-        g.line([(5, my - 1), (6, my), (7, my), (8, my), (9, my - 1)], "k")
-    elif mouth == "open":
-        g.rect(5, my - 1, 9, my + 1, "k")
-        g.rect(6, my + 1, 8, my + 1, "p")
-    elif mouth == "flat":
-        g.line([(6, my), (7, my), (8, my)], "k")
-    # --- arms (sticks) and the bat
-    ay = top + 4
-    if arms == "down":
-        g.line([(3, ay), (3, ay + 1)], "o")
-        g.line([(12, ay), (12, ay + 1)], "o")
+        g.set(7, hy + 3, "y")
+        g.set(9, hy + 3, "y")
+    elif eyes == "angry":
+        g.set(7, hy + 3, "r")
+        g.set(9, hy + 3, "r")
+    g.set(6, hy + 1, "r")                    # wood grain
+    g.set(8, hy + 2, "r")
+    g.rect(7, hy - 2, 8, hy - 1, "r")        # plume
+    g.set(6, hy - 2, "r")
+    # --- front arm and the bat
+    ay = ty + 1
+    if arms == "hold":
+        g.rect(11, ay, 12, ay, "S")
     elif arms == "fwd":
-        g.line([(3, ay), (3, ay + 1)], "o")
-        g.line([(12, ay), (13, ay)], "o")
+        g.rect(11, ay, 13, ay, "S")
     elif arms == "up":
-        g.line([(3, ay - 1), (3, ay - 2)], "o")
-        g.line([(12, ay - 1), (12, ay - 2)], "o")
+        g.rect(11, ay - 2, 12, ay - 1, "S")
     elif arms == "raise":
-        g.line([(3, ay), (3, ay + 1)], "o")
-        g.line([(12, ay - 1), (12, ay - 3), (13, ay - 4)], "o")
-    if bat == "shoulder":   # resting on the shoulder, pointing back-up
-        g.line([(2, ay - 1), (1, ay - 2), (1, ay - 3), (0, ay - 4)], "y")
-        g.line([(2, ay - 2), (1, ay - 4), (0, ay - 5)], "o")
-    elif bat == "up":       # wound up overhead
-        g.rect(12, top - 4, 13, ay - 1, "y")
-        g.rect(13, top - 5, 14, top - 3, "o")
-    elif bat == "swing":    # straight out in front
-        g.rect(12, ay - 1, 15, ay, "y")
-        g.set(15, ay - 2, "o")
-    elif bat == "low":      # follow-through
-        g.line([(13, ay + 1), (14, ay + 2), (15, ay + 3)], "y")
-        g.line([(14, ay + 1), (15, ay + 2)], "o")
+        g.rect(12, ay - 4, 12, ay - 1, "S")
+    if bat == "upright":   # held like a sword at rest
+        g.rect(13, ay - 6, 14, ay - 3, "y")
+        g.rect(13, ay - 2, 13, ay + 1, "o")
+    elif bat == "windup":  # raised back over the helmet
+        g.rect(4, max(0, hy - 4), 12, max(0, hy - 3), "y")
+        g.rect(12, max(0, hy - 3), 13, hy - 1, "o")
+    elif bat == "swing":   # straight out, full reach
+        g.rect(13, ay - 1, 15, ay, "y")
+        g.rect(12, ay, 12, ay, "o")
+    elif bat == "low":     # follow-through
+        g.rect(13, ay + 1, 14, ay + 2, "o")
+        g.rect(14, ay + 3, 15, ay + 4, "y")
+    elif bat == "high":    # victory: raised to the sky
+        g.rect(12, max(0, hy - 5), 13, ay - 3, "y")
+        g.rect(12, ay - 2, 12, ay - 1, "o")
+    elif bat == "ground":  # resting beside a sitting knight
+        g.rect(12, 13, 15, 13, "y")
     g.outline()
     return g.rows()
 
@@ -143,62 +135,56 @@ def sparkle(rows, pts, c="C"):
 
 H = hero
 ANIMS = {
-    "idle 250": [H(), H(bob=1), H(), H(eyes="blink")],
-    "sit 900": [H(legs="sit", arms="down", bat="none", eyes="sleepy"),
-                H(legs="sit", arms="down", bat="none", eyes="sleepy", bob=1)],
-    "walk 100": [H(legs="strideA"), H(legs="strideB", lift=1), H(legs="strideA", bob=1), H(legs="strideB", lift=1)],
-    "attack 80": [H(arms="up", bat="up", eyes="wide", mouth="open"),
-                  H(arms="fwd", bat="swing", eyes="wide", mouth="open"),
-                  H(arms="fwd", bat="low", mouth="smile")],
-    "cast 100": [sparkle(H(arms="up", bat="none", eyes="wide", mouth="open"), [(2, 1), (13, 0)]),
-                 sparkle(H(arms="up", bat="none", eyes="wide", mouth="open", bob=1), [(1, 2), (14, 1)])],
-    "open 120": [H(arms="fwd", bat="none", bob=1), H(arms="fwd", bat="none", eyes="wide")],
+    "idle 250": [H(), H(bob=1), H(), H(eyes="off")],
+    "sit 900": [H(legs="sit", arms="hold", bat="ground", eyes="off"),
+                H(legs="sit", arms="hold", bat="ground", eyes="off", bob=1)],
+    "walk 100": [H(legs="strideA", cape=1), H(legs="strideB", lift=1),
+                 H(legs="strideA", bob=1, cape=1), H(legs="strideB", lift=1)],
+    "attack 80": [H(arms="up", bat="windup", eyes="angry"),
+                  H(arms="fwd", bat="swing", eyes="angry"),
+                  H(arms="fwd", bat="low")],
+    "cast 100": [sparkle(H(arms="up", bat="high", eyes="angry"), [(2, 1), (15, 2)]),
+                 sparkle(H(arms="up", bat="high", eyes="angry", bob=1), [(1, 3), (15, 0)])],
+    "open 120": [H(arms="fwd", bat="none", bob=1), H(arms="fwd", bat="none")],
     "hold 400": [H(arms="fwd", bat="none"), H(arms="fwd", bat="none", bob=1)],
-    "raise_hand 300": [H(arms="raise", bat="none", mouth="open"), H(arms="raise", bat="none", mouth="flat", bob=1)],
-    "victory 150": [H(arms="up", bat="up", eyes="wide", mouth="open"),
-                    H(arms="up", bat="up", eyes="wide", mouth="open", lift=1)],
+    "raise_hand 300": [H(arms="raise", bat="none"), H(arms="raise", bat="none", bob=1)],
+    "victory 150": [H(arms="up", bat="high"), H(arms="up", bat="high", lift=1, cape=1)],
 }
 
 
-def face(mouth_open=False, bob=0):
-    """8x8: the top of the log with cap, eyes and mouth."""
+def face(blink=False, bob=0):
+    """8x8 for compact mode: the drum helmet with its slit and glowing eyes."""
     g = Grid(8, 8)
     t = 2 + bob
-    g.rect(1, t, 6, 7, "o")
-    g.rect(5, t, 6, 7, "r")
-    g.rect(1, t - 1, 6, t - 1, "s")
-    g.rect(3, t - 2, 4, t - 2, "r")
-    g.set(2, t + 1, "w")
-    g.set(4, t + 1, "w")
-    if mouth_open:
-        g.rect(2, t + 3, 4, t + 4, "k")
-    else:
-        g.line([(2, t + 3), (3, t + 4), (4, t + 3)], "k")
+    g.rect(1, t, 6, 6, "o")
+    g.rect(5, t, 6, 6, "r")
+    g.rect(1, 6, 6, 6, "y")
+    g.rect(2, t + 2, 5, t + 2, "k")
+    if not blink:
+        g.set(3, t + 2, "y")
+        g.set(4, t + 2, "y")
+    g.rect(3, t - 2, 4, t - 1, "r")
     g.outline()
     return g.rows()
 
 
 def portrait(talk):
-    """32x32 close-up for the ask popup and character sheet."""
+    """32x32 close-up: the drum helmet head-on, glowing eyes, steel collar, plume."""
     g = Grid(32, 32)
-    g.rect(5, 9, 26, 31, "o")
-    g.rect(22, 9, 26, 31, "r")
-    for y in (17, 22, 27):
-        g.rect(7, y, 11, y, "r")             # grain
-    g.rect(4, 6, 27, 9, "s")                 # cap
-    g.rect(6, 4, 25, 5, "S")
-    g.rect(14, 0, 17, 3, "r")                # plume
-    g.rect(15, 0, 18, 1, "r")
-    g.rect(8, 12, 13, 17, "w")               # eyes
-    g.rect(17, 12, 22, 17, "w")
-    g.rect(11, 15, 12, 16, "k")
-    g.rect(18, 15, 19, 16, "k")
+    g.rect(3, 26, 28, 31, "s")               # steel shoulders
+    g.rect(22, 26, 28, 31, "S")
+    g.rect(6, 6, 25, 25, "o")                # drum helmet
+    g.rect(21, 6, 25, 25, "r")
+    for (x, y) in ((9, 9), (13, 11), (18, 20), (10, 21)):
+        g.rect(x, y, x + 2, y, "r")          # grain
+    g.rect(6, 23, 25, 25, "y")               # rim
+    g.rect(8, 14, 23, 17, "k")               # the slit / visor
+    g.rect(11, 15, 13, 16, "y")              # glowing eyes
+    g.rect(18, 15, 20, 16, "y")
     if talk:
-        g.rect(10, 21, 21, 26, "k")
-        g.rect(12, 25, 19, 26, "p")
-    else:
-        g.line([(10, 22), (11, 23), (12, 24), (13, 24), (14, 24), (15, 24),
-                (16, 24), (17, 24), (18, 24), (19, 23), (20, 22)], "k")
+        g.rect(13, 19, 18, 21, "k")          # the drum speaks through a lower slit
+    g.rect(14, 0, 17, 5, "r")                # plume
+    g.rect(12, 1, 13, 3, "r")
     g.outline()
     return g.rows()
 
@@ -214,6 +200,6 @@ def write(name, anims):
 
 
 write("hero_sahur_knight", ANIMS)
-write("face_sahur_knight", {"idle 250": [face(), face(bob=1)]})
+write("face_sahur_knight", {"idle 250": [face(), face(bob=1), face(), face(blink=True)]})
 write("portrait_sahur_knight", {"talk 180": [portrait(False), portrait(True)], "idle 1000": [portrait(False)]})
 print("ok")

@@ -431,10 +431,11 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
                 }
             }
         }
+        // Summons stand behind their hero so the hero is never covered.
+        summons(w, h, scene, buf, x as i32 + dx + 11);
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
         prop(h, scene, buf, x as i32 + dx, py);
         condition(w, h, scene, buf, x as i32 + dx, py, i as u64);
-        summons(w, h, scene, buf, x as i32 + dx + 9);
         float_text(h, scene, buf, x, py);
         if let Some((s, fg)) = badge(h) {
             text(buf, scene.x + x + 12, scene.y, scene.right(), s, fg, 'n');
