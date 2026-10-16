@@ -418,6 +418,32 @@ mod tests {
     }
 
     #[test]
+    fn summon_storm_shows_three_and_a_count() {
+        let (mut world, mut d) = demo::party(1, &crate::config::Config::default().classes);
+        for n in 0..10 {
+            world.apply(crate::game::world::GameEvent::Summon(
+                0,
+                format!("toolu_storm_{n}"),
+                false,
+            ));
+        }
+        for _ in 0..40 {
+            d.advance(TICK_MS, &mut world);
+        }
+        let mut t = Terminal::new(TestBackend::new(120, 18)).unwrap();
+        t.draw(|f| layout::render(&world, &view::View::default(), f.area(), f.buffer_mut()))
+            .unwrap();
+        let screen: String = t
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(screen.contains("+7"));
+    }
+
+    #[test]
     fn any_size_renders_without_panic() {
         for (w, h) in [
             (1, 1),

@@ -403,6 +403,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     let enemy_zone = 28;
     let slots = (scene.width.saturating_sub(enemy_zone + 1) / STEP).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);
+    let mut counts = Vec::new();
     for (i, h) in w.heroes.iter().take(drawn).enumerate() {
         let x = 1 + i as u16 * STEP;
         // Exhausted heroes walk at half speed (SPEC §5.4).
@@ -433,6 +434,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         }
         // Summons stand behind their hero so the hero is never covered.
         summons(w, h, scene, buf, x as i32 + dx + 11);
+        counts.push((h, x as i32 + dx + 11));
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
         prop(h, scene, buf, x as i32 + dx, py);
         condition(w, h, scene, buf, x as i32 + dx, py, i as u64);
@@ -451,6 +453,9 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
                 i as u64,
             );
         }
+    }
+    for (h, x) in counts {
+        summon_count(h, scene, buf, x);
     }
     plus_n(w, scene, buf, 1 + drawn as u16 * STEP, drawn);
 
@@ -576,12 +581,17 @@ fn summons(w: &World, h: &Hero, scene: Rect, buf: &mut Buffer, x: i32) {
             );
         }
     }
+}
+
+/// `+N` for Summons past the third. Drawn after every hero: the 2nd and 3rd Summon
+/// stand behind the next hero, and a label there would be painted over.
+fn summon_count(h: &Hero, scene: Rect, buf: &mut Buffer, x: i32) {
     if h.summons.len() > 3 {
         let s = format!("+{}", h.summons.len() - 3);
         let y = scene.y + (stand_y(scene, 12) / 2) as u16;
         text_on(
             buf,
-            (scene.x as i32 + x + 15).max(0) as u16,
+            (scene.x as i32 + x + 5).max(0) as u16,
             y,
             scene.right(),
             &s,
