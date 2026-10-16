@@ -36,6 +36,9 @@ pub struct Lifetime {
     pub first_tries: u32,
     pub bosses_won: u32,
     pub bosses_lost: u32,
+    /// Boss wins in a row (reset by a failure) and the best run so far.
+    pub streak: u32,
+    pub best_streak: u32,
     /// Level-up points, one per level, each added to the top stat at the time.
     pub bonus: [u32; 5],
 }
@@ -267,6 +270,8 @@ pub struct Quest {
     output_tokens: u64,
     /// The "running out of stamina" toast went out for this quest.
     pub exhausted_toast: bool,
+    /// Boss attempts in this quest: ✓ won, ✗ failed.
+    pub bosses: String,
 }
 
 /// A finished quest, for the quest log.
@@ -277,6 +282,9 @@ pub struct QuestDone {
     pub xp: u64,
     /// "complete" or "unfinished" (pane closed mid-quest).
     pub result: &'static str,
+    pub bosses: String,
+    /// 1-based chapter of the hero's story this quest belongs to.
+    pub chapter: u32,
 }
 
 /// Where a live hero sits: its herdr pane and its identity key (SPEC §6.2).
@@ -342,6 +350,8 @@ pub struct Hero {
     /// context size (token XP counts growth only).
     last_message: Option<String>,
     last_context: Option<u64>,
+    /// Latest file the agent touched (places the hero in the Town).
+    pub last_file: Option<String>,
 }
 
 impl Hero {
@@ -373,6 +383,7 @@ impl Hero {
             rested_ms: 0,
             last_message: None,
             last_context: None,
+            last_file: None,
         }
     }
 
@@ -511,6 +522,7 @@ impl Hero {
                     context_tokens: 0,
                     output_tokens: 0,
                     exhausted_toast: false,
+                    bosses: String::new(),
                 });
             }
             return None;
@@ -603,11 +615,14 @@ impl Hero {
 
     /// Close the open quest (if any) with `result`.
     pub fn end_quest(&mut self, result: &'static str) -> Option<QuestDone> {
+        let chapter = self.life.chapters + 1;
         self.quest.take().map(|q| QuestDone {
             title: q.title,
             duration_ms: q.elapsed_ms,
             xp: q.xp_gained,
             result,
+            bosses: q.bosses,
+            chapter,
         })
     }
 

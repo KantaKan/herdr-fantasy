@@ -5,5 +5,6 @@ pub mod moves;
 pub mod party;
 pub mod persist;
 pub mod repo;
+pub mod town;
 pub mod world;
 pub mod xp;

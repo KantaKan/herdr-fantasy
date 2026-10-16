@@ -81,10 +81,10 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** running `/compact` in Claude plays the rest scene and refills STA; `/clear` starts a new chapter without losing level.
 
 ## M7 — Quest log, character sheet, town
-- [ ] Quest log screen `q` (SPEC §5.6), reading `quests.jsonl`.
-- [ ] Character sheet `c` (SPEC §5.8).
-- [ ] Town `t` (SPEC §5.7): building ranking, tiers, theme by language, commit-count decorations, heroes placed by last touched file from the transcript. Git calls cached, never on the render thread.
-  **Done when:** all three screens work in full and compact layouts and survive restarts.
+- [x] Quest log screen `q` (SPEC §5.6), reading `quests.jsonl`.
+- [x] Character sheet `c` (SPEC §5.8).
+- [x] Town `t` (SPEC §5.7): building ranking, tiers, theme by language, commit-count decorations, heroes placed by last touched file from the transcript. Git calls cached, never on the render thread.
+  **Done when:** all three screens work in full and compact layouts and survive restarts. (2026-10-16: full layout checked in previews; compact checked live in the real stage — Forge Village from this repo's git, character sheet Lv4, quest log with 12 quests loaded from disk after a stage restart.)
 
 ## M8 — Summons, Joke Classes, Rubber Duck, Quips
 - [ ] `game/summon.rs`: subagent `tool_use` → Summon, `tool_result` → dismiss; XP to summoning Hero; "Shadows raised" counter. Unit tests.

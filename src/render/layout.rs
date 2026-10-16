@@ -6,7 +6,9 @@ use ratatui::style::{Color, Modifier, Style};
 
 use super::halfblock::{self, rgb};
 use super::motion;
+use super::screens;
 use super::sprites::sheet;
+use super::view::{Screen, View};
 use crate::game::hero::{Anim, FLOAT_MS, Fatigue, Hero, Motion, REST_MS, Status};
 use crate::game::world::World;
 use crate::game::xp::xp_to_next;
@@ -51,25 +53,46 @@ fn text(buf: &mut Buffer, x: u16, y: u16, max_x: u16, s: &str, fg: char, bg: cha
     buf.set_stringn(x, y, s, (max_x - x) as usize, style).0
 }
 
-pub fn render(w: &World, area: Rect, buf: &mut Buffer) {
+pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
     if area.width == 0 || area.height == 0 {
         return;
     }
     halfblock::fill(buf, area, c('d'));
-    match mode(area, w) {
+    let m = mode(area, w);
+    let hero = w.heroes.get(view.selected);
+    // Text screens take everything below the top bar, in any layout.
+    if matches!(view.screen, Screen::Quests | Screen::Sheet | Screen::Help) {
+        top_bar(w, area, buf, area.y);
+        let body = Rect::new(
+            area.x,
+            area.y + 1,
+            area.width,
+            area.height.saturating_sub(1),
+        );
+        match view.screen {
+            Screen::Quests => screens::quests(w, hero, view.scroll, body, buf),
+            Screen::Sheet => screens::character(w, hero, body, buf),
+            _ => screens::help(body, buf),
+        }
+        return;
+    }
+    match m {
         Mode::Mini => mini(w, area, buf),
         m => {
             top_bar(w, area, buf, area.y);
             quest_line(w, area, buf, area.y + 1);
             let footer = footer_rows(w);
             let scene = Rect::new(area.x, area.y + 2, area.width, area.height - 2 - footer);
-            if m == Mode::Full {
+            if view.screen == Screen::Town {
+                backdrop(w, scene, buf);
+                screens::town_scene(w, hero, scene, buf, m == Mode::Full);
+            } else if m == Mode::Full {
                 full_scene(w, scene, buf);
             } else {
                 compact_scene(w, scene, buf);
             }
             for (i, h) in w.heroes.iter().take(MAX_DRAWN).enumerate() {
-                footer_row(h, area, buf, scene.bottom() + i as u16);
+                footer_row(h, area, buf, scene.bottom() + i as u16, i == view.selected);
             }
         }
     }
@@ -520,9 +543,17 @@ fn xp_cells(h: &Hero, cells: usize) -> usize {
 }
 
 /// `Claude    Lv7  ▓▓▓▓▓▓░░ XP  STA ▓▓▓▓░  62%  editing src/auth.rs`
-fn footer_row(h: &Hero, area: Rect, buf: &mut Buffer, y: u16) {
+fn footer_row(h: &Hero, area: Rect, buf: &mut Buffer, y: u16, selected: bool) {
     let end = area.right();
-    let mut x = text(buf, area.x, y, end, " ", 'w', 'd');
+    let mut x = text(
+        buf,
+        area.x,
+        y,
+        end,
+        if selected { "▶" } else { " " },
+        'y',
+        'd',
+    );
     x = text(
         buf,
         x,

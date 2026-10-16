@@ -234,7 +234,7 @@ command = ["./target/release/herdr-fantasy", "ask"]
 - Quest line: current quest title of the **focused or most recently active** hero.
 - Scene: heroes left, enemies right. Max 4 heroes drawn; extra shown as `+N`. Up to 3 Summons drawn small beside their Hero, extra as `+N`. The Rubber Duck sits by the campfire.
 - Footer: one row per hero: name, level, XP bar, stamina bar, current activity text.
-- Keys inside stage (only when stage pane is focused): `t` town, `q` quest log, `c` character sheet of selected hero, `←/→` select hero, `Enter` focus that agent's pane, `?` help, `Esc` back to battle.
+- Keys inside stage (only when stage pane is focused): `t` town, `q` quest log, `c` character sheet of selected hero, `←/→` select hero (footer `▶`), `↑/↓` scroll the quest log, `Enter` focus that agent's pane (`agent.focus`), `?` help, `Esc` back to battle, `Ctrl-C` quit. Each screen key toggles. Quest log, sheet and help use the whole pane below the top bar in every layout; the town replaces the battle scene.
 
 ### 5.3 Compact mode and mini mode (thresholds in §5.2)
 - Compact: smaller scene (heroes as 8×8 faces), footer kept. The boss isn't drawn; its name + HP stay on the quest line.
@@ -301,14 +301,19 @@ Rules:
 
 ### 5.6 Quest log (`q`)
 - Chapters per repo. A chapter = one agent session (ends on New Run or SessionEnd).
-- Each quest row: title, hero, duration, XP gained, bosses fought (✓/✗), result.
+- Each quest row: title, hero, duration, XP gained, bosses fought (✓/✗), result. Rows are newest first under `── <hero> · Chapter N ──` headings; `quests.jsonl` lines carry `bosses` and `chapter` (older lines without them read as chapter 1).
+- The log is loaded from disk when a repo's first hero arrives, so it survives restarts.
+- A new prompt completes the open quest — unless that quest is under 2 s old (it was started by the same prompt): then it's just renamed.
 - Quest title priority: transcript user prompt (first line, ≤ 60 chars) → `terminal_title_stripped` → "Untitled quest".
 - `config.store_prompt_text = true` by default; when false, store only the title source "prompt" and a hash. Everything stays local.
 
 ### 5.7 Town (`t`)
 - The repo as a village. Up to 6 buildings = top-level directories ranked by tracked file count (`git ls-files`, cached, refreshed on `Stop` at most once per 60 s).
 - Building size tier grows with that directory's file count; town gets decorations (trees, lanterns, a statue) as total commit count crosses thresholds (10, 50, 100, 250, 500, 1000).
-- Heroes stand next to the building matching their last touched file (`file_path` of the latest file tool in the transcript).
+- Building tiers: < 20 files, < 100, more (16/20/24 px sprites per theme). Top-level dirs starting with `.` are skipped. Survey = `git ls-files --full-name -- :/` + `git rev-list --count HEAD` on the herdr thread, at most once a minute per repo.
+- Decorations stand in the background spread across the town; buildings go in front, labelled on the ground.
+- Compact layout: a text town (`Forge Village · N commits` and `[dir]` labels with hero initials).
+- Heroes stand next to the building matching their last touched file (`file_path` of the latest file tool in the transcript; any path component naming a building). Others stand in the town square on the left.
 - The Town shown follows the selected Hero's repo.
 - Theme by dominant language (file extension counts): Rust → **Forge Village**, TS/JS → **Lantern City**, Go → **Harbor Town**, Python → **Serpent Grove**, other → **Meadow Hamlet**.
 

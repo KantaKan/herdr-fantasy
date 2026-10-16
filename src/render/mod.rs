@@ -5,7 +5,9 @@ pub mod ask;
 pub mod halfblock;
 pub mod layout;
 pub mod motion;
+pub mod screens;
 pub mod sprites;
+pub mod view;
 
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
@@ -36,13 +38,18 @@ pub fn run_demo(scenario: &str, seed: u64, speed: f32, config: &Config) -> anyho
     let speed = speed.max(0.0) as f64;
     let mut carry = 0.0;
     with_terminal(|t| {
-        // ponytail: `q` quits the demo until M7 gives it the quest log.
-        frame_loop(t, &mut world, true, |w, real_ms| {
-            let ms = real_ms * speed + carry;
-            carry = ms.fract();
-            demo.advance(ms as u64, w);
-            true
-        })
+        frame_loop(
+            t,
+            &mut world,
+            |_, _| {},
+            |w, real_ms| {
+                let ms = real_ms * speed + carry;
+                carry = ms.fract();
+                demo.advance(ms as u64, w);
+                w.drain_finished();
+                true
+            },
+        )
     })
 }
 
@@ -61,7 +68,12 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
     let mut visible = true;
     let mut last_save = Instant::now();
     let result = with_terminal(|t| {
-        frame_loop(t, &mut world, false, |w, real_ms| {
+        let focus = |w: &World, i: usize| {
+            if let Some(seat) = w.heroes.get(i).and_then(|h| h.seat.as_ref()) {
+                let _ = cmds.send(Cmd::Focus(seat.pane_id.clone()));
+            }
+        };
+        frame_loop(t, &mut world, focus, |w, real_ms| {
             visible = drain(&rx, &cmds, w, config, &mut store, visible);
             for title in std::mem::take(&mut w.toasts) {
                 if config.notify_on_blocked {
@@ -128,6 +140,12 @@ fn drain(
                 &cfg.context_window,
                 &cfg.bosses,
             ),
+            Ok(Update::Town { repo, town }) => {
+                if repo == w.repo_key {
+                    w.theme = town.theme.name().to_string();
+                }
+                w.towns.insert(repo, town);
+            }
             Ok(Update::Lost) => w.banner = Some("reconnecting to herdr…".into()),
             Err(TryRecvError::Empty) => return visible,
             Err(TryRecvError::Disconnected) => {
@@ -143,7 +161,7 @@ fn persist(w: &mut World, store: &mut Store, last_save: &mut Instant, store_prom
     let ended = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64);
-    for f in std::mem::take(&mut w.finished) {
+    for f in w.drain_finished() {
         let Some(seat) = &f.seat else { continue };
         store.append_quest(
             &seat.repo.key,
@@ -154,6 +172,8 @@ fn persist(w: &mut World, store: &mut Store, last_save: &mut Instant, store_prom
                 xp: f.quest.xp,
                 result: f.quest.result,
                 ended_unix_ms: ended,
+                bosses: &f.quest.bosses,
+                chapter: f.quest.chapter,
             },
         );
     }
@@ -179,15 +199,17 @@ fn with_terminal(
 }
 
 /// `step(world, real_ms)` advances the game and returns whether the stage is visible.
+/// `on_focus(world, hero)` runs when the user presses Enter on a hero.
 fn frame_loop(
     terminal: &mut ratatui::DefaultTerminal,
     world: &mut World,
-    quit_on_q: bool,
+    mut on_focus: impl FnMut(&World, usize),
     mut step: impl FnMut(&mut World, f64) -> bool,
 ) -> anyhow::Result<()> {
     let mut last = Instant::now();
     let mut prev: Option<Buffer> = None;
     let mut visible = true;
+    let mut view = view::View::default();
     loop {
         let wait = if !visible {
             HIDDEN_WAKE
@@ -208,8 +230,11 @@ fn frame_loop(
                 Event::Key(k) if k.kind == KeyEventKind::Press => {
                     let ctrl_c =
                         k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL);
-                    if ctrl_c || (quit_on_q && k.code == KeyCode::Char('q')) {
+                    if ctrl_c {
                         return Ok(());
+                    }
+                    if let view::Key::Focus(i) = view.key(k.code, world.heroes.len()) {
+                        on_focus(world, i);
                     }
                 }
                 Event::Resize(..) => prev = None,
@@ -223,6 +248,7 @@ fn frame_loop(
         let real_ms = (now - last).as_secs_f64() * 1000.0;
         last = now;
         visible = step(world, real_ms);
+        view.clamp(world.heroes.len());
         if !visible {
             prev = None; // repaint fully when we come back
             continue;
@@ -231,7 +257,7 @@ fn frame_loop(
         let size = terminal.size()?;
         let area = Rect::new(0, 0, size.width, size.height);
         let mut buf = Buffer::empty(area);
-        layout::render(world, area, &mut buf);
+        layout::render(world, &view, area, &mut buf);
         if prev.as_ref() != Some(&buf) {
             terminal.draw(|f| f.buffer_mut().clone_from(&buf))?;
             prev = Some(buf);
@@ -253,7 +279,7 @@ mod tests {
             d.advance(TICK_MS, &mut world);
         }
         let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
-        t.draw(|f| layout::render(&world, f.area(), f.buffer_mut()))
+        t.draw(|f| layout::render(&world, &view::View::default(), f.area(), f.buffer_mut()))
             .unwrap();
         t.backend().buffer().clone()
     }
@@ -328,6 +354,7 @@ mod preview {
             let (mut world, mut d) = demo::party(1, &crate::config::Config::default().classes);
             for _ in 0..tick {
                 d.advance(66, &mut world);
+                world.drain_finished();
             }
             let area = Rect::new(0, 0, w, h);
             let mut buf = Buffer::empty(area);
@@ -344,7 +371,17 @@ mod preview {
                 a.tick(tick as u64 * 66);
                 ask::draw(&a, area, &mut buf);
             } else {
-                layout::render(&world, area, &mut buf);
+                let v = view::View {
+                    screen: match std::env::var("PREVIEW_SCREEN").as_deref() {
+                        Ok("quests") => view::Screen::Quests,
+                        Ok("sheet") => view::Screen::Sheet,
+                        Ok("town") => view::Screen::Town,
+                        Ok("help") => view::Screen::Help,
+                        _ => view::Screen::Battle,
+                    },
+                    ..Default::default()
+                };
+                layout::render(&world, &v, area, &mut buf);
             }
             let s = 5;
             let mut img = image::RgbImage::new(w as u32 * s, h as u32 * 2 * s);

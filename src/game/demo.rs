@@ -76,6 +76,20 @@ pub fn scenario(name: &str, seed: u64, classes: &Classes) -> Option<(World, Demo
 /// rising, quests completing, then the whole party camps. Loops every 42 s.
 pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
     let mut w = World::new("demo-repo", "Forge Village");
+    let mut files: Vec<String> = Vec::new();
+    for (dir, n, ext) in [
+        ("src", 120, "rs"),
+        ("tests", 30, "rs"),
+        ("assets", 40, "txt"),
+        ("docs", 8, "md"),
+        ("tools", 4, "py"),
+    ] {
+        files.extend((0..n).map(|i| format!("{dir}/f{i}.{ext}")));
+    }
+    w.towns.insert(
+        super::world::DEMO_REPO.into(),
+        super::town::plan(&files, 180),
+    );
     let (k, m, r) = (
         w.add_hero("Claude", Class::for_agent(classes, "claude")),
         w.add_hero("Codex", Class::for_agent(classes, "codex")),
@@ -172,6 +186,9 @@ impl Demo {
                 ),
                 n => ("Bash", json!({ "command": SHELL[n - 3] })),
             };
+            if let Some(f) = input["file_path"].as_str() {
+                w.heroes[i].last_file = Some(f.to_string());
+            }
             if let Some(m) = moves::tool_move(tool, &input) {
                 w.apply(E::Act(i, m.action, Some(m.detail)));
                 if let Some((text, color)) = m.float {

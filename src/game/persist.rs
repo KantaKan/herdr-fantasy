@@ -46,6 +46,26 @@ pub struct QuestRecord<'a> {
     pub xp: u64,
     pub result: &'a str,
     pub ended_unix_ms: u64,
+    pub bosses: &'a str,
+    pub chapter: u32,
+}
+
+/// A quest-log line read back (older lines lack `bosses`/`chapter`).
+#[derive(Debug, Deserialize)]
+struct QuestLine {
+    hero: String,
+    title: String,
+    duration_ms: u64,
+    xp: u64,
+    result: String,
+    #[serde(default)]
+    bosses: String,
+    #[serde(default = "first_chapter")]
+    chapter: u32,
+}
+
+fn first_chapter() -> u32 {
+    1
 }
 
 /// Quest title as written to the log. With `store_prompt_text = false` (SPEC §5.6) only
@@ -159,6 +179,27 @@ impl Store {
         }
     }
 
+    /// The saved quest log of a repo (bad lines skipped).
+    pub fn read_quests(&self, repo: &str) -> Vec<super::world::LogEntry> {
+        let path = self.root.join("repos").join(repo).join("quests.jsonl");
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return Vec::new();
+        };
+        text.lines()
+            .filter_map(|l| serde_json::from_str::<QuestLine>(l).ok())
+            .map(|q| super::world::LogEntry {
+                repo: Some(repo.to_string()),
+                hero: q.hero,
+                title: q.title,
+                duration_ms: q.duration_ms,
+                xp: q.xp,
+                result: q.result,
+                bosses: q.bosses,
+                chapter: q.chapter,
+            })
+            .collect()
+    }
+
     pub fn append_quest(&self, repo: &str, rec: &QuestRecord) {
         let path = self.root.join("repos").join(repo).join("quests.jsonl");
         let line = serde_json::to_string(rec).unwrap();
@@ -262,10 +303,36 @@ mod tests {
                     xp: 2,
                     result: "complete",
                     ended_unix_ms: 3,
+                    bosses: "✗✓",
+                    chapter: 2,
                 },
             );
         }
         let log = std::fs::read_to_string(root.join("repos/r/quests.jsonl")).unwrap();
         assert_eq!(log.lines().count(), 2);
+        let back = s.read_quests("r");
+        assert_eq!(back.len(), 2);
+        assert_eq!(
+            (
+                back[1].title.as_str(),
+                back[1].bosses.as_str(),
+                back[1].chapter
+            ),
+            ("b", "✗✓", 2)
+        );
+        // M4-era lines without bosses/chapter still read
+        std::fs::write(
+            root.join("repos/old/quests.jsonl"),
+            "{\"hero\":\"C\",\"title\":\"t\",\"duration_ms\":1,\"xp\":1,\"result\":\"complete\",\"ended_unix_ms\":1}\nnot json\n",
+        )
+        .ok();
+        std::fs::create_dir_all(root.join("repos/old")).unwrap();
+        std::fs::write(
+            root.join("repos/old/quests.jsonl"),
+            "{\"hero\":\"C\",\"title\":\"t\",\"duration_ms\":1,\"xp\":1,\"result\":\"complete\",\"ended_unix_ms\":1}\nnot json\n",
+        )
+        .unwrap();
+        let old = s.read_quests("old");
+        assert_eq!((old.len(), old[0].chapter), (1, 1));
     }
 }

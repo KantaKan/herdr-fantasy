@@ -26,6 +26,7 @@ const VISIBLE_POLL: Duration = Duration::from_millis(200);
 const HIDDEN_POLL: Duration = Duration::from_millis(1000);
 const BACKOFF_MIN: Duration = Duration::from_millis(250);
 const BACKOFF_MAX: Duration = Duration::from_secs(5);
+const TOWN_REFRESH: Duration = Duration::from_secs(60);
 
 /// The stage's own pane, for visibility and "same workspace" filtering.
 #[derive(Debug, Clone)]
@@ -62,6 +63,11 @@ pub enum Update {
         /// The pane switched to a different transcript (new session / `/clear`).
         new_chapter: bool,
     },
+    /// A fresh survey of a repo's town (git, at most once a minute per repo).
+    Town {
+        repo: String,
+        town: crate::game::town::Town,
+    },
     /// Connection to herdr lost; the thread keeps retrying.
     Lost,
 }
@@ -74,6 +80,8 @@ pub enum Cmd {
         body: String,
         sound: &'static str,
     },
+    /// Jump to this pane (Enter on a hero). Never sends keys.
+    Focus(String),
 }
 
 fn status(s: AgentStatus) -> Status {
@@ -236,6 +244,7 @@ fn run(tx: Sender<Update>, cmds: Receiver<Cmd>, me: Option<Me>, all_workspaces: 
     let mut last: Option<Update> = None;
     let mut tails = Tails::default();
     let claude_dir = claude_dir();
+    let mut surveyed: HashMap<String, std::time::Instant> = HashMap::new();
     loop {
         let mut send = |u: Update| {
             if last.as_ref() == Some(&u) {
@@ -272,6 +281,11 @@ fn run(tx: Sender<Update>, cmds: Receiver<Cmd>, me: Option<Me>, all_workspaces: 
                             tracing::warn!("notification: {e:#}");
                         }
                     }
+                    Ok(Cmd::Focus(pane)) => {
+                        if let Err(e) = client.request("agent.focus", json!({ "target": pane })) {
+                            tracing::warn!("focus {pane}: {e:#}");
+                        }
+                    }
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => return,
                 }
@@ -290,12 +304,39 @@ fn run(tx: Sender<Update>, cmds: Receiver<Cmd>, me: Option<Me>, all_workspaces: 
                 }
             };
             let (agents, visible) = party(&snap, me.as_ref(), all_workspaces, &mut repo_of);
-            if !send(Update::Party { agents, visible }) {
+            if !send(Update::Party {
+                agents: agents.clone(),
+                visible,
+            }) {
                 return; // stage exited
             }
             let wanted = transcripts(&snap, me.as_ref(), all_workspaces, &claude_dir);
             if !tails.poll(wanted, &tx) {
                 return;
+            }
+            // Towns: one git survey per repo, refreshed at most once a minute.
+            for a in &agents {
+                let fresh = surveyed
+                    .get(&a.repo.key)
+                    .is_some_and(|t| t.elapsed() < TOWN_REFRESH);
+                if fresh {
+                    continue;
+                }
+                surveyed.insert(a.repo.key.clone(), std::time::Instant::now());
+                let cwd = snap
+                    .agents
+                    .iter()
+                    .find(|x| x.pane_id == a.pane_id)
+                    .and_then(|x| x.foreground_cwd.clone().or_else(|| x.cwd.clone()));
+                if let Some(town) = cwd.and_then(|d| crate::game::town::survey(Path::new(&d))) {
+                    let u = Update::Town {
+                        repo: a.repo.key.clone(),
+                        town,
+                    };
+                    if tx.send(u).is_err() {
+                        return;
+                    }
+                }
             }
             std::thread::sleep(if visible { VISIBLE_POLL } else { HIDDEN_POLL });
         }

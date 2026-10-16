@@ -1,8 +1,11 @@
 //! The game state the renderer draws. Changes enter through `GameEvent` (demo, and later
 //! transcripts) or `party::sync` (live herdr agents), so every source drives the same code.
 
+use std::collections::{HashMap, HashSet};
+
 use super::boss::{self, BossKind, Tier};
 use super::hero::{Action, Class, Hero, QuestDone, Seat, Status};
+use super::town::Town;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameEvent {
@@ -114,6 +117,38 @@ pub struct Finished {
     pub quest: QuestDone,
 }
 
+/// One row of the quest log screen (SPEC §5.6).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogEntry {
+    /// Repo key; `None` for demo heroes.
+    pub repo: Option<String>,
+    pub hero: String,
+    pub title: String,
+    pub duration_ms: u64,
+    pub xp: u64,
+    pub result: String,
+    pub bosses: String,
+    pub chapter: u32,
+}
+
+impl From<&Finished> for LogEntry {
+    fn from(f: &Finished) -> Self {
+        LogEntry {
+            repo: f.seat.as_ref().map(|s| s.repo.key.clone()),
+            hero: f.hero.clone(),
+            title: f.quest.title.clone(),
+            duration_ms: f.quest.duration_ms,
+            xp: f.quest.xp,
+            result: f.quest.result.to_string(),
+            bosses: f.quest.bosses.clone(),
+            chapter: f.quest.chapter,
+        }
+    }
+}
+
+/// Repo key for demo heroes (no seat).
+pub const DEMO_REPO: &str = "demo";
+
 #[derive(Debug, Clone)]
 pub struct World {
     pub repo: String,
@@ -134,6 +169,14 @@ pub struct World {
     pub chapter_banner: Option<(String, u64)>,
     /// Config `reduced_motion`: no dashes, hops, sway, or shake.
     pub reduced_motion: bool,
+    /// Key of the repo shown in the top bar (most heroes).
+    pub repo_key: String,
+    /// Town per repo key, from `git` (off the render thread).
+    pub towns: HashMap<String, Town>,
+    /// Finished quests, newest last (loaded from disk per repo + this session's).
+    pub log: Vec<LogEntry>,
+    /// Repos whose saved quest log is already in `log`.
+    pub logs_loaded: HashSet<String>,
 }
 
 impl World {
@@ -150,6 +193,10 @@ impl World {
             toasts: Vec::new(),
             chapter_banner: None,
             reduced_motion: false,
+            repo_key: DEMO_REPO.into(),
+            towns: HashMap::new(),
+            log: Vec::new(),
+            logs_loaded: HashSet::new(),
         }
     }
 
@@ -166,6 +213,20 @@ impl World {
         }
         let sum: u32 = self.heroes.iter().map(|h| h.level).sum();
         (sum + n / 2) / n
+    }
+
+    /// Move newly finished quests into the log; returns them for the caller to persist.
+    pub fn drain_finished(&mut self) -> Vec<Finished> {
+        let done = std::mem::take(&mut self.finished);
+        self.log.extend(done.iter().map(LogEntry::from));
+        done
+    }
+
+    /// The repo key a hero belongs to.
+    pub fn repo_of(h: &Hero) -> String {
+        h.seat
+            .as_ref()
+            .map_or(DEMO_REPO.into(), |s| s.repo.key.clone())
     }
 
     /// The hero whose quest the HUD shows: focused first, else most recently active.
@@ -211,9 +272,13 @@ impl World {
                 let Some(h) = self.heroes.get_mut(i) else {
                     return;
                 };
+                if let Some(q) = &mut h.quest {
+                    q.bosses.push(if failed { '✗' } else { '✓' });
+                }
                 if failed {
                     b.fail();
                     h.life.bosses_lost += 1;
+                    h.life.streak = 0;
                     h.say(format!("{} laughs!", b.name), 'r');
                 } else {
                     let xp = boss::victory_xp(b.fails);
@@ -224,6 +289,8 @@ impl World {
                     };
                     b.defeat();
                     h.life.bosses_won += 1;
+                    h.life.streak += 1;
+                    h.life.best_streak = h.life.best_streak.max(h.life.streak);
                     if b.fails == 0 {
                         h.life.first_tries += 1;
                     }
@@ -468,6 +535,23 @@ mod tests {
         w.apply(GameEvent::Rest(a, Some(10)));
         assert!(w.is_busy());
         assert_eq!(w.heroes[a].life.rests, 1);
+    }
+
+    #[test]
+    fn finished_quests_land_in_the_log_with_bosses_and_chapter() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.apply(GameEvent::Status(a, Status::Working));
+        w.update(1);
+        fight(&mut w, a, true);
+        fight(&mut w, a, false);
+        w.apply(GameEvent::Status(a, Status::Idle));
+        w.update(crate::game::hero::QUEST_END_IDLE_MS);
+        let done = w.drain_finished();
+        assert_eq!(done.len(), 1);
+        assert_eq!(w.log.len(), 1);
+        assert_eq!((w.log[0].bosses.as_str(), w.log[0].chapter), ("✗✓", 1));
+        assert_eq!(w.heroes[a].life.best_streak, 1);
     }
 
     #[test]

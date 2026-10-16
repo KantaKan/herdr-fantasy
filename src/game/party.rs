@@ -97,6 +97,10 @@ pub fn sync(
                     slot,
                 };
                 let p = store.get(&seat.repo.key, &seat.key());
+                if w.logs_loaded.insert(seat.repo.key.clone()) {
+                    let saved = store.read_quests(&seat.repo.key);
+                    w.log.splice(0..0, saved);
+                }
                 let mut hero = Hero::new(
                     &format!("{}{}", a.name, roman(slot)),
                     Class::for_agent(classes, &a.kind),
@@ -127,6 +131,17 @@ pub fn sync(
     }
     if let Some((name, _)) = counts.iter().max_by_key(|(_, n)| **n) {
         w.repo = name.to_string();
+        if let Some(s) = w
+            .heroes
+            .iter()
+            .filter_map(|h| h.seat.as_ref())
+            .find(|s| s.repo.name == *name)
+        {
+            w.repo_key.clone_from(&s.repo.key);
+            if let Some(t) = w.towns.get(&s.repo.key) {
+                w.theme = t.theme.name().to_string();
+            }
+        }
     }
     newly_blocked
 }
@@ -194,14 +209,33 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
         match e {
             Entry::Prompt(p) => {
                 // A new prompt closes the previous quest; the next work starts a new one.
-                if !f.history {
+                // A quest only seconds old was started by this same prompt: rename it
+                // instead (no free +25 XP for rapid prompts).
+                let fresh = w.heroes[i]
+                    .quest
+                    .as_ref()
+                    .is_some_and(|q| q.elapsed_ms < 2_000);
+                if !f.history && !fresh {
                     finish(w);
                 }
                 let h = &mut w.heroes[i];
+                if let Some(q) = h.quest.as_mut().filter(|_| fresh) {
+                    q.title = prompt_title(p);
+                }
                 h.title = Some(prompt_title(p));
                 h.title_from_prompt = true;
             }
-            Entry::Tool { id, name, input } if !f.history => {
+            Entry::Tool { name, input, .. } if f.history => {
+                // History still tells us where the hero was working.
+                if let Some(file) = input["file_path"].as_str() {
+                    w.heroes[i].last_file = Some(file.to_string());
+                }
+                let _ = name;
+            }
+            Entry::Tool { id, name, input } => {
+                if let Some(file) = input["file_path"].as_str() {
+                    w.heroes[i].last_file = Some(file.to_string());
+                }
                 let command = input["command"].as_str().unwrap_or("");
                 let boss = matches!(name.as_str(), "Bash" | "PowerShell")
                     .then(|| boss::classify(command, bosses))
@@ -534,6 +568,13 @@ mod tests {
         );
         w.update(1);
         assert!(w.heroes[0].quest.is_some());
+        fed(&mut w, &[Entry::Prompt("same breath".into())], false);
+        assert!(
+            w.finished.is_empty(),
+            "a seconds-old quest is renamed, not completed"
+        );
+        assert_eq!(w.heroes[0].quest.as_ref().unwrap().title, "same breath");
+        w.update(5_000);
         fed(&mut w, &[Entry::Prompt("next thing".into())], false);
         assert_eq!(w.finished.len(), 1);
         assert_eq!(w.finished[0].quest.result, "complete");

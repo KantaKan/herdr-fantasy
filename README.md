@@ -52,4 +52,9 @@ notify_sound = "request"        # none | done | request
 memes = true
 ```
 
+## In the stage
+
+Click into the stage pane, then: `t` town · `q` quest log · `c` character sheet ·
+`←/→` pick a hero · `Enter` jump to its agent · `?` help · `Esc` back · `Ctrl-C` quit.
+
 `herdr-fantasy doctor` prints what it detected (socket, config, renderer).
