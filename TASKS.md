@@ -42,7 +42,7 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [x] Time-based XP for all agents, levels, level-up effect (SPEC §7).
 - [x] `game/persist.rs` save/load party per repo, atomic writes, corrupt-file handling.
 - [x] Visibility gating: 0 fps when the stage pane's tab/workspace is not focused.
-- [ ] **Manual check left for KantaKan:** open a Codex pane next to a Claude pane and confirm both heroes appear and track herdr's sidebar.
+- [x] Codex pane next to a Claude pane: both heroes appear (Mage + Claude's class) and follow herdr's status. (Verified live 2026-10-16 in a test workspace.)
   **Done when:** inside herdr with real Claude Code + Codex panes, `herdr plugin pane open --plugin kantakan.herdr-fantasy --entrypoint stage` shows both heroes and their states change within 300 ms of herdr's sidebar; killing/restarting the stage keeps levels. (2026-10-16: verified with a real Claude pane via `herdr plugin pane open … --target-pane wC:p1 --direction down --no-focus`; XP saved on Ctrl-C and reloaded. Codex not yet tried.)
 
 ## M3 — Auto-open + notifications + ask popup
@@ -52,7 +52,8 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [x] `ask` popup: JRPG box, portrait talk animation, typewriter text from `pane.read --source detection`, options Go/Next/Close, `agent.focus` on Go. Never sends keys to agents.
 - [x] `open-ask` action opens the popup for the most recently blocked hero.
 - [x] README section: keybinding snippet `prefix+a` → `kantakan.herdr-fantasy.open-ask`.
-- [ ] **Manual check left for KantaKan:** restart herdr (stage should appear in every workspace exactly once), let an agent block (❗ + one toast), press `prefix+a` (after adding the README snippet), `Go` focuses it, `Esc` closes.
+- [x] Agent blocks on a permission prompt → `❗ needs you`; the ask popup shows the hero portrait and the real question, `Go` focuses the agent, `Esc` closes; a new workspace gets exactly one stage from `workspace.created`. (Verified live 2026-10-16.) herdr itself reports `done`, not `blocked`, for an `AskUserQuestion` prompt, and flickers to `working` while a permission prompt is still open — herdr's detection, not ours.
+- [ ] **Manual check left for KantaKan** (#8): restart herdr — stage in every workspace exactly once; see the toast. (Can't restart the server from inside it; nested herdr is disabled.)
   **Done when:** opening herdr shows the stage automatically in every workspace; a blocked agent shows ❗ + one toast; `prefix+a` opens the dialogue and Go focuses that pane; `Esc` always closes.
 
 ## M4 — Claude transcript reader (rich events) — ADR-0001
@@ -77,7 +78,7 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [x] Rest scene + Well Rested buff on the transcript compaction marker or `agent_session` source `compact`.
 - [x] New Run banner when a Chapter starts; level kept.
 - [x] Token-based XP with caps (SPEC §7.1); stats STR/INT/DEX/VIT/LUK.
-- [ ] **Manual check left for KantaKan** (#8): run `/compact` and `/clear` in a real Claude pane — I can't from inside the session being watched. Covered by `m6_compaction_rests_and_clear_keeps_level` with real-shaped entries.
+- [x] `/compact` and `/clear` in a real Claude pane (verified live 2026-10-16): compaction shows the Rest scene and stamina refills (69% → 98%); `/clear` shows `Chapter 2 · New Run` and keeps the level. Found and fixed: the typed `/compact` line had become a quest title.
   **Done when:** running `/compact` in Claude plays the rest scene and refills STA; `/clear` starts a new chapter without losing level.
 
 ## M7 — Quest log, character sheet, town
@@ -92,7 +93,7 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [x] Draw up to 3 Summons per Hero, `+N` beyond.
 - [x] `game/duck.rs`: triggers + 2-min rate limit (SPEC §6.6), pure + unit tests. Duck sprite + speech bubble.
 - [x] Quip table keyed by event; `memes` config toggle.
-- [ ] **Manual check left for KantaKan** (#8): ask Claude for something that launches 2 parallel subagents and watch them rise/sink (I don't launch real subagents unasked). Covered by `m8_two_parallel_subagents_rise_and_sink` with the real `Agent` tool shape, and seen in demo previews.
+- [x] 2 real parallel subagents (verified live 2026-10-16). Found and fixed: Claude Code now runs subagents async — the `Agent` result returns in ~2 s, so Summons sank at once; they now stay until the `<agent-message>` hand-back (`async_subagents_stay_until_they_hand_back`).
   **Done when:** a Claude run with 2 parallel subagents shows two Joke Class Summons rising and sinking, a twice-failed `cargo test` makes the Duck quip, and `memes = false` silences every Quip. (Duck verified live 2026-10-16: two failing `cargo test` runs → log `duck quips (StubbornBoss): Quack. Explain it to me, line by line.`)
 
 ## M9 — Kitty graphics (Mac/Linux upgrade; Windows Terminal stays halfblock)

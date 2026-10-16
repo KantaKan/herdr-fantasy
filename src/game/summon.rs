@@ -29,6 +29,8 @@ pub const RISE_MS: u64 = 600;
 pub const SINK_MS: u64 = 600;
 /// Background subagents return at once; let them stand around a while instead.
 pub const BACKGROUND_MS: u64 = 60_000;
+/// An async subagent we can track leaves when it hands back; this is only a safety net.
+pub const TRACKED_MS: u64 = 30 * 60_000;
 /// Summon XP for the hero: 1 per 10 s it worked, capped per summon.
 const XP_CAP: u64 = 30;
 
@@ -51,6 +53,8 @@ pub struct Summon {
     /// Total time alive (XP, background expiry).
     pub alive_ms: u64,
     pub background: bool,
+    /// Async subagent id, once its launch result named it; it leaves on hand-back.
+    pub agent: Option<String>,
 }
 
 /// Stable across runs and platforms (same id → same costume).
@@ -69,6 +73,7 @@ impl Summon {
             phase_ms: 0,
             alive_ms: 0,
             background,
+            agent: None,
         }
     }
 
@@ -85,6 +90,14 @@ impl Summon {
         if self.phase != Phase::Sinking {
             self.phase = Phase::Sinking;
             self.phase_ms = 0;
+        }
+    }
+
+    fn max_ms(&self) -> u64 {
+        if self.agent.is_some() {
+            TRACKED_MS
+        } else {
+            BACKGROUND_MS
         }
     }
 
@@ -111,7 +124,7 @@ impl Summon {
                 self.phase = Phase::Active;
                 self.phase_ms = 0;
             }
-            Phase::Active if self.background && self.alive_ms >= BACKGROUND_MS => self.dismiss(),
+            Phase::Active if self.background && self.alive_ms >= self.max_ms() => self.dismiss(),
             Phase::Sinking if self.phase_ms >= SINK_MS => return false,
             _ => {}
         }

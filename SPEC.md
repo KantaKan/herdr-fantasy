@@ -69,11 +69,12 @@ schema with `herdr api schema --json` at implementation time and fix this sectio
 - herdr's built-in integrations (`herdr integration install claude`) run a `SessionStart` hook that calls `herdr pane report-agent-session --agent-session-id … --agent-session-path <transcript_path> --session-start-source …`. We read that back from `AgentInfo.agent_session`. We install **no hooks of our own**.
 - `agent_session.kind == "path"` → `value` is the transcript. `kind == "id"` (what Claude panes report on 0.9.3) → the transcript is `~/.claude/projects/<slug(cwd)>/<value>.jsonl`, where `slug` replaces every non-alphanumeric character of the agent's `cwd` with `-` (`D:\code\hrdr-game` → `D--code-hrdr-game`). Verified against real files.
 - The Claude transcript is JSONL. Entries we use (**verified against real transcripts at M4**; fixture `tests/fixtures/claude_transcript.jsonl`, scrubbed):
-  - prompt: `type:"user"` with `message.content` a **string**. Skip `isMeta: true`, `isCompactSummary: true`, `isSidechain: true`, and strings starting with `<` (command echoes). Text blocks `[Request interrupted…]` are not prompts.
+  - prompt: `type:"user"` with `message.content` a **string**. Skip `isMeta: true`, `isCompactSummary: true`, `isSidechain: true`, and strings starting with `<` (command echoes). Text blocks `[Request interrupted…]` are not prompts. Newer Claude Code (verified 2026-10-16) also logs a typed slash command as a plain prompt line (`"/compact"`) before its `<command-name>` echo: a line whose first word is `/name` is not a prompt.
   - tool call: `type:"assistant"`, `message.content[]` block `{type:"tool_use", id, name, input}`. Names seen: `Read`, `Edit`, `Write`, `Grep`, `Glob`, `Bash`, `PowerShell`, `Skill` (`input.skill`), `Agent` (subagents: `input.subagent_type`, `description`, `prompt`, `run_in_background`), `AskUserQuestion`, `mcp__*`.
   - tool result: `type:"user"`, block `{type:"tool_result", tool_use_id, is_error?}`. A non-zero Bash/PowerShell exit **does** set `is_error: true` (content starts `Exit code N`).
   - usage: `message.usage` on assistant lines; context = `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`; `message.model` names the model.
   - compaction: `type:"system", subtype:"compact_boundary"`, `compactMetadata: {trigger, preTokens, postTokens}`, followed by an `isCompactSummary` user line.
+  - async subagents (verified 2026-10-16, the default now): the `Agent` `tool_result` comes back ~2 s after the call with text `Async agent launched successfully … agentId: <id> …`. The subagent's finish is a later `type:"queue-operation", operation:"enqueue"` line whose `content` starts `<agent-message from="<id>">`.
   - lots of other line types (`attachment`, `mode`, `ai-title`, `file-history-*`, …) are ignored.
 - **Measured lag:** Claude Code flushes the transcript in batches; a tool call became readable ~2.3 s after it started (Windows, 2026-10-16). Animations therefore trail the agent by ~2–3 s. Accepted for v1 (ADR-0001).
 - A change of `agent_session.value` for a pane = new session → new Chapter.
@@ -258,7 +259,7 @@ command = ["./target/release/herdr-fantasy", "ask"]
 | transcript | `Edit` / `Write` / `MultiEdit` / `NotebookEdit` | one sword swing at nearest slime; damage number = lines changed (clamped 1–999) |
 | transcript | `Bash` / `PowerShell` (not a boss command) | casts spell, rune circle effect |
 | transcript | `Bash` / `PowerShell` boss command (§6.3) | boss enters screen shake; battle until its `tool_result` |
-| transcript | `Task` / `Agent` (subagent) start | **Summon** rises from shadow (§6.5); sinks back on its `tool_result` |
+| transcript | `Task` / `Agent` (subagent) start | **Summon** rises from shadow (§6.5); sinks back on its `tool_result`, or for an async subagent on its `<agent-message>` hand-back |
 | transcript | context ≥ 70% | "Tired": sweat drop every few seconds |
 | transcript | context ≥ 90% | "Exhausted": slower walk cycle, pants; toast once: "Claude is running out of stamina" |
 | transcript / herdr | compaction marker, or `agent_session` source `compact` | **Rest scene**: hero sits by fire, screen dims, glowing "memory" particles drift into a journal; then "Well Rested" buff (2 min sparkle), STA refills |
@@ -369,7 +370,7 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 
 ### 6.5 Summons and Joke Classes
 - A subagent `tool_use` (`Task` / `Agent`) spawns a **Summon** next to the Hero that launched it; its `tool_result` dismisses it. Several may run in parallel.
-- Summons have no level and are not saved. Subagent transcripts are sidechains we skip, so a Summon's XP is time-based: 1 per 10 s it was out, capped at 30, paid to the summoning Hero when it sinks. Each spawn increments the Hero's lifetime "Shadows raised" (character sheet). `run_in_background: true` subagents return at once, so their Summon stays 60 s and then sinks.
+- Summons have no level and are not saved. Subagent transcripts are sidechains we skip, so a Summon's XP is time-based: 1 per 10 s it was out, capped at 30, paid to the summoning Hero when it sinks. Each spawn increments the Hero's lifetime "Shadows raised" (character sheet). An async subagent (result `Async agent launched … agentId: X`) keeps its Summon until the `<agent-message from="X">` hand-back (30 min safety cap). Any other background subagent that returns at once stays 60 s and then sinks.
 - Rise and sink take 0.6 s each: the sprite is revealed bottom-up out of a `p`/`k` shadow puddle. Each Joke Class says its entrance line for 2.5 s (a Quip, so `memes = false` hides it). The footer shows `☠N` while Summons are out.
 - Look: a `p`/`k` shadow rises from the ground, solidifies into a **Joke Class** costume, fights, then sinks back into shadow.
 - Joke Class = seeded pick from the table below using the subagent's `tool_use` id (stable for its lifetime, reproducible in demo):

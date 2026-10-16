@@ -279,10 +279,28 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
                 }
             }
             Entry::ToolResult { id, is_error, text } if !f.history => {
-                w.apply(GameEvent::Dismiss(i, id.clone()));
+                let summon = w.heroes[i].summons.iter_mut().find(|s| &s.tool_id == id);
+                match (summon, crate::transcript::claude::async_agent_id(text)) {
+                    // Launched in the background: it stays until its hand-back.
+                    (Some(s), Some(agent)) => {
+                        s.background = true;
+                        s.agent = Some(agent.to_string());
+                    }
+                    _ => w.apply(GameEvent::Dismiss(i, id.clone())),
+                }
                 if w.heroes[i].boss_tool.as_ref() == Some(id) {
                     w.heroes[i].boss_tool = None;
                     w.apply(GameEvent::BossResult(i, boss::failed(*is_error, text)));
+                }
+            }
+            Entry::AgentDone(agent) if !f.history => {
+                let tool = w.heroes[i]
+                    .summons
+                    .iter()
+                    .find(|s| s.agent.as_ref() == Some(agent))
+                    .map(|s| s.tool_id.clone());
+                if let Some(tool) = tool {
+                    w.apply(GameEvent::Dismiss(i, tool));
                 }
             }
             Entry::Usage {
@@ -761,6 +779,48 @@ mod tests {
                 .iter()
                 .all(|s| s.phase == crate::game::summon::Phase::Sinking)
         );
+        w.update(crate::game::summon::SINK_MS);
+        assert!(w.heroes[0].summons.is_empty());
+    }
+
+    #[test]
+    fn async_subagents_stay_until_they_hand_back() {
+        use crate::game::summon::Phase;
+        let mut w = World::new("", "");
+        let mut s = store("async");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        let call = |id: &str| Entry::Tool {
+            id: id.into(),
+            name: "Agent".into(),
+            input: serde_json::json!({"description": "x", "prompt": "x"}),
+        };
+        let launched = |id: &str, agent: &str| Entry::ToolResult {
+            id: id.into(),
+            is_error: false,
+            text: format!("Async agent launched successfully.\nagentId: {agent} (internal ID)"),
+        };
+        fed(&mut w, &[call("a1"), call("a2")], false);
+        // Real shape: both launch results land ~2 s later, in the same flush.
+        fed(
+            &mut w,
+            &[launched("a1", "ag1"), launched("a2", "ag2")],
+            false,
+        );
+        w.update(20_000);
+        let phases: Vec<_> = w.heroes[0].summons.iter().map(|s| s.phase).collect();
+        assert_eq!(phases, [Phase::Active, Phase::Active], "still working");
+        fed(&mut w, &[Entry::AgentDone("ag1".into())], false);
+        assert_eq!(w.heroes[0].summons[0].phase, Phase::Sinking);
+        assert_eq!(w.heroes[0].summons[1].phase, Phase::Active);
+        // Well past the old 60 s background timeout, the tracked one is still there.
+        w.update(120_000);
+        assert_eq!(w.heroes[0].summons.len(), 1);
+        fed(&mut w, &[Entry::AgentDone("ag2".into())], false);
         w.update(crate::game::summon::SINK_MS);
         assert!(w.heroes[0].summons.is_empty());
     }

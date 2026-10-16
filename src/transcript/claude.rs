@@ -8,6 +8,9 @@
 //!   is_error?}`; a non-zero Bash/PowerShell exit sets `is_error: true` ("Exit code N").
 //! - usage: `message.usage` on assistant lines; context = input + cache_creation + cache_read.
 //! - compaction: `type:"system", subtype:"compact_boundary", compactMetadata.postTokens`.
+//! - async subagents: the `Agent` result comes back at once ("Async agent launched
+//!   successfully … agentId: X"); the finish is a later `type:"queue-operation",
+//!   operation:"enqueue"` line whose content starts `<agent-message from="X">`.
 
 use serde_json::Value;
 
@@ -36,6 +39,18 @@ pub enum Entry {
     },
     /// The conversation was compacted; new context size if known.
     Compact { post_tokens: Option<u64> },
+    /// An async subagent handed back its report.
+    AgentDone(String),
+}
+
+/// The agent id in an "Async agent launched" `Agent` result, if it is one.
+pub fn async_agent_id(result: &str) -> Option<&str> {
+    if !result.starts_with("Async agent launched") {
+        return None;
+    }
+    let rest = &result[result.find("agentId: ")? + 9..];
+    let id = &rest[..rest.find(|c: char| !c.is_ascii_alphanumeric())?];
+    (!id.is_empty()).then_some(id)
 }
 
 pub fn parse(line: &str) -> Vec<Entry> {
@@ -54,7 +69,11 @@ pub fn parse(line: &str) -> Vec<Entry> {
                 return out;
             }
             match &msg["content"] {
-                Value::String(s) if !s.trim_start().starts_with('<') && !s.trim().is_empty() => {
+                Value::String(s)
+                    if !s.trim_start().starts_with('<')
+                        && !s.trim().is_empty()
+                        && !is_slash_command(s) =>
+                {
                     out.push(Entry::Prompt(s.clone()));
                 }
                 Value::Array(blocks) => {
@@ -70,6 +89,7 @@ pub fn parse(line: &str) -> Vec<Entry> {
                                 if !t.starts_with("[Request interrupted")
                                     && !t.starts_with('<')
                                     && !t.trim().is_empty()
+                                    && !is_slash_command(t)
                                 {
                                     out.push(Entry::Prompt(t.to_string()));
                                 }
@@ -107,9 +127,28 @@ pub fn parse(line: &str) -> Vec<Entry> {
         Some("system") if e["subtype"] == "compact_boundary" => out.push(Entry::Compact {
             post_tokens: e["compactMetadata"]["postTokens"].as_u64(),
         }),
+        Some("queue-operation") if e["operation"] == "enqueue" => {
+            let c = e["content"].as_str().unwrap_or_default();
+            if let Some(rest) = c.strip_prefix("<agent-message from=\"")
+                && let Some(end) = rest.find('"')
+            {
+                out.push(Entry::AgentDone(rest[..end].to_string()));
+            }
+        }
         _ => {}
     }
     out
+}
+
+/// `/compact`, `/clear`, `/model opus`: newer Claude Code logs the typed command as a plain
+/// prompt line before its `<command-name>` echo. Not a quest. (`/usr/bin is broken` is.)
+fn is_slash_command(s: &str) -> bool {
+    let first = s.split_whitespace().next().unwrap_or("");
+    first.len() > 1
+        && first.starts_with('/')
+        && first[1..]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':'))
 }
 
 /// Tool result content is a string or a list of `{type:"text", text}` blocks.
@@ -224,9 +263,33 @@ mod tests {
             r#"{"type":"user","message":{"content":"<command-name>/clear</command-name>"}}"#,
             r#"{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#,
             r#"{"type":"last-prompt","lastPrompt":"x"}"#,
+            r#"{"type":"user","message":{"role":"user","content":"/compact"}}"#,
+            r#"{"type":"user","message":{"content":"/model opus"}}"#,
         ] {
             assert!(parse(line).is_empty(), "{line}");
         }
+    }
+
+    #[test]
+    fn paths_are_not_slash_commands() {
+        let line = r#"{"type":"user","message":{"content":"/usr/bin is broken"}}"#;
+        assert_eq!(parse(line), [Entry::Prompt("/usr/bin is broken".into())]);
+    }
+
+    #[test]
+    fn async_agents_launch_and_hand_back() {
+        let launched = "Async agent launched successfully. (internal)
+agentId: aedc299ac4da3444e (internal ID - do not mention)
+The agent is working";
+        assert_eq!(async_agent_id(launched), Some("aedc299ac4da3444e"));
+        assert_eq!(async_agent_id("Done. agentId: x1 "), None);
+        let done = r#"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-10-16T13:20:37.243Z","content":"<agent-message from=\"aedc299ac4da3444e\">\n[Subagent hand-back] ...\n  Done.\n</agent-message>"}"#;
+        assert_eq!(parse(done), [Entry::AgentDone("aedc299ac4da3444e".into())]);
+        let typed = r#"{"type":"queue-operation","operation":"enqueue","content":"fix the bug"}"#;
+        assert!(
+            parse(typed).is_empty(),
+            "a queued human prompt is not a hand-back"
+        );
     }
 
     #[test]
