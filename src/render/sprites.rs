@@ -131,7 +131,15 @@ mod tests {
 
     #[test]
     fn m1_sheets_load() {
-        for class in ["knight", "mage", "rogue", "ranger", "cleric", "bard"] {
+        for class in [
+            "knight",
+            "mage",
+            "rogue",
+            "ranger",
+            "cleric",
+            "bard",
+            "sahur_knight",
+        ] {
             let s = sheet(&format!("hero_{class}"));
             assert_eq!((s.frames[0].w, s.frames[0].h), (16, 16));
             assert!(s.tags.contains_key("walk"));

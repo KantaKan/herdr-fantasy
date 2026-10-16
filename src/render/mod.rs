@@ -462,7 +462,11 @@ mod preview {
                 h.parse().unwrap(),
                 tick.parse().unwrap(),
             );
-            let (mut world, mut d) = demo::party(1, &crate::config::Config::default().classes);
+            let mut classes = crate::config::Config::default().classes;
+            if let Ok(c) = std::env::var("PREVIEW_CLAUDE") {
+                classes.insert("claude".into(), c);
+            }
+            let (mut world, mut d) = demo::party(1, &classes);
             for _ in 0..tick {
                 d.advance(66, &mut world);
                 world.drain_finished();

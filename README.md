@@ -5,7 +5,7 @@ While agents work they fight slimes and bosses that mirror what they're really d
 when one needs you it raises its hand and talks to you in a JRPG dialogue box. Each repo
 grows its own party, levels, quest log and town.
 
-![demo: three heroes fight a Flaky Ghost while the Rubber Duck comments](docs/demo.gif)
+![demo: a Sahur Knight leads the party against the Sahur Knocker while Joke Class summons rise and the Rubber Duck comments](docs/demo.gif)
 
 Every animation is real: an edit swings a sword (damage = lines written), `grep` reads a
 book, `git push` sends a carrier pigeon, a skill opens a spellbook, `cargo test` summons a
@@ -70,8 +70,8 @@ memes = true                    # the Rubber Duck and other Quips
 reduced_motion = false          # no dashes, hops, shakes, flashes or fades
 store_prompt_text = true        # false: the quest log keeps only a hash of your prompts
 
-[classes]                       # agent kind → Knight, Mage, Rogue, Ranger, Cleric, Bard
-claude = "Knight"
+[classes]                       # agent kind → Knight, Mage, Rogue, Ranger, Cleric, Bard,
+claude = "Sahur Knight"         #   or the special Sahur Knight
 ```
 
 `herdr-fantasy doctor` prints what it detected (socket, config, renderer).

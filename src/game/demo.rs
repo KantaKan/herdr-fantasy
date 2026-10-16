@@ -29,8 +29,9 @@ pub struct Demo {
 
 /// One boss command per demo loop, so the roster and size tiers all show up.
 const BOSSES: [(BossKind, &str); 6] = [
-    (BossKind::Test, "cargo test"),
+    // The first loop shows off the rare Sahur Knocker (this command rolls it).
     (BossKind::Build, "cargo build --workspace"),
+    (BossKind::Test, "cargo test"),
     (BossKind::Lint, "cargo clippy src/auth.rs"),
     (BossKind::Test, "pytest -k login"),
     (BossKind::Build, "tsc"),

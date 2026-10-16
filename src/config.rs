@@ -31,7 +31,15 @@ pub enum NotifySound {
     Request,
 }
 
-pub const CLASSES: [&str; 6] = ["Knight", "Mage", "Rogue", "Ranger", "Cleric", "Bard"];
+pub const CLASSES: [&str; 7] = [
+    "Knight",
+    "Mage",
+    "Rogue",
+    "Ranger",
+    "Cleric",
+    "Bard",
+    "Sahur Knight",
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {

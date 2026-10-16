@@ -169,7 +169,7 @@ pub fn character(w: &World, hero: Option<&Hero>, area: Rect, buf: &mut Buffer) {
         area,
         x + 1,
         y,
-        &format!("{:?} · Lv {}", h.class, h.level),
+        &format!("{} · Lv {}", h.class.name(), h.level),
         'w',
         false,
     );

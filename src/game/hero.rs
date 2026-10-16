@@ -211,6 +211,8 @@ pub enum Class {
     Ranger,
     Cleric,
     Bard,
+    /// Special: kentongan-drum helmet, wood armor, a wooden bat (`tools/gen_special.py`).
+    SahurKnight,
 }
 
 impl Class {
@@ -227,6 +229,7 @@ impl Class {
             "Rogue" => Class::Rogue,
             "Ranger" => Class::Ranger,
             "Cleric" => Class::Cleric,
+            "Sahur Knight" | "SahurKnight" => Class::SahurKnight,
             _ => Class::Bard,
         }
     }
@@ -240,6 +243,20 @@ impl Class {
             Class::Ranger => "ranger",
             Class::Cleric => "cleric",
             Class::Bard => "bard",
+            Class::SahurKnight => "sahur_knight",
+        }
+    }
+
+    /// Display name, as written in the config.
+    pub fn name(self) -> &'static str {
+        match self {
+            Class::Knight => "Knight",
+            Class::Mage => "Mage",
+            Class::Rogue => "Rogue",
+            Class::Ranger => "Ranger",
+            Class::Cleric => "Cleric",
+            Class::Bard => "Bard",
+            Class::SahurKnight => "Sahur Knight",
         }
     }
 
@@ -252,6 +269,7 @@ impl Class {
             Class::Ranger => 'g',
             Class::Cleric => 'y',
             Class::Bard => 'o',
+            Class::SahurKnight => 'y',
         }
     }
 }
@@ -780,6 +798,9 @@ mod tests {
         assert_eq!(Class::for_agent(&c, "grok"), Class::Bard);
         c.insert("default".into(), "Cleric".into());
         assert_eq!(Class::for_agent(&c, "grok"), Class::Cleric);
+        c.insert("claude".into(), "Sahur Knight".into());
+        assert_eq!(Class::for_agent(&c, "claude"), Class::SahurKnight);
+        assert_eq!(Class::SahurKnight.name(), "Sahur Knight");
     }
 
     #[test]
