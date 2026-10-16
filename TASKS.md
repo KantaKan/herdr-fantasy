@@ -56,13 +56,13 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** opening herdr shows the stage automatically in every workspace; a blocked agent shows ❗ + one toast; `prefix+a` opens the dialogue and Go focuses that pane; `Esc` always closes.
 
 ## M4 — Claude transcript reader (rich events) — ADR-0001
-- [ ] Capture a real Claude transcript into `tests/fixtures/` (reads, edits, Bash + PowerShell pass/fail, a subagent, a compaction). Resolve SPEC §15 Q6 and update SPEC §3.3.
-- [ ] `transcript/tail.rs`: follow by byte offset, partial lines, truncation/replacement, no replay on first sight (SPEC §11).
-- [ ] `transcript/claude.rs`: entries → agent-neutral `GameEvent` (pure, fixture-tested).
-- [ ] Wire `agent_session.value` from herdr cache → one tailer per live Claude Agent; path change = new Chapter.
-- [ ] Tool → animation mapping (SPEC §5.4), including per-command moves (grep reads a book, git push sends a pigeon, …) and the `Skill` spellbook; action queue with combo collapse.
-- [ ] Quest title from the transcript user prompt; `store_prompt_text` option.
-  **Done when:** in a Claude Code pane, reading files opens chests and edits swing swords with line-count damage within 1 s; restarting the stage doesn't replay old actions; `/clear` starts a new Chapter.
+- [x] Capture a real Claude transcript into `tests/fixtures/` (reads, edits, Bash + PowerShell pass/fail, a subagent, a compaction — scrubbed, from real transcripts). Resolve SPEC §15 Q6 and update SPEC §3.3.
+- [x] `transcript/tail.rs`: follow by byte offset, partial lines, truncation/replacement, no replay on first sight (SPEC §11).
+- [x] `transcript/claude.rs`: entries → agent-neutral `GameEvent` (pure, fixture-tested).
+- [x] Wire `agent_session.value` from herdr cache → one tailer per live Claude Agent; path change = new Chapter.
+- [x] Tool → animation mapping (SPEC §5.4), including per-command moves (grep reads a book, git push sends a pigeon, …) and the `Skill` spellbook; action queue with combo collapse.
+- [x] Quest title from the transcript user prompt; `store_prompt_text` option.
+  **Done when:** in a Claude Code pane, reading files opens chests and edits swing swords with line-count damage within 1 s (**measured ~2.3 s**: Claude Code's transcript flush, see SPEC §3.3 — accepted, ADR-0001); restarting the stage doesn't replay old actions; `/clear` starts a new Chapter. (Verified live: `rg` → "reading the big book" in the real stage. `/clear` covered by `tails_send_history_then_new_lines_then_new_chapter`; not tried live because it would wipe this session.)
 
 ## M5 — Bosses
 - [x] Boss roster, species pick, and size tiers in `game/boss.rs` (SPEC §6.3) — landed early, with 27 placeholder sprites.

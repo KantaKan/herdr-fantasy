@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 
 use super::halfblock::{self, rgb};
 use super::sprites::sheet;
-use crate::game::hero::{Anim, Hero, Status};
+use crate::game::hero::{Anim, FLOAT_MS, Hero, Motion, Status};
 use crate::game::world::World;
 use crate::game::xp::xp_to_next;
 use crate::palette;
@@ -175,6 +175,44 @@ fn stand_y(scene: Rect, h: u16) -> i32 {
     (scene.height as i32 - 1) * 2 - h as i32
 }
 
+/// The playing action's prop (book, pigeon, coin…), placed by how it moves.
+fn prop(h: &Hero, scene: Rect, buf: &mut Buffer, x: i32, py: i32) {
+    let Some((action, t)) = h.action() else {
+        return;
+    };
+    let Some((name, motion)) = action.prop() else {
+        return;
+    };
+    let f = sheet(&format!("prop_{name}")).frame("a", h.anim_ms);
+    let (px, ppy) = match motion {
+        Motion::Hand => (x + 12, py + 6),
+        Motion::Out => (x + 12 + (t * 24.0) as i32, py + 4 - (t * 6.0) as i32),
+        Motion::In => (x + 36 - (t * 24.0) as i32, py + 6),
+        Motion::Rise => (x + 4, py - (t * 8.0) as i32),
+    };
+    halfblock::draw(buf, scene, f, px, ppy, false);
+}
+
+/// Damage numbers, "learned: …", combos: rise two rows over the head, then vanish.
+fn float_text(h: &Hero, scene: Rect, buf: &mut Buffer, x: u16, py: i32) {
+    let Some((text, color, left)) = &h.float else {
+        return;
+    };
+    let rise = ((FLOAT_MS - left) / 400).min(2) as i32;
+    let y = scene.y as i32 + py / 2 - 1 - rise;
+    if y >= scene.y as i32 {
+        let tx = (scene.x + x + 8).saturating_sub(text.chars().count() as u16 / 2);
+        text_on(buf, tx, y as u16, scene.right(), text, *color);
+    }
+}
+
+fn text_on(buf: &mut Buffer, x: u16, y: u16, max_x: u16, s: &str, fg: char) {
+    let style = Style::default().fg(c(fg)).add_modifier(Modifier::BOLD);
+    if x < max_x {
+        buf.set_stringn(x, y, s, (max_x - x) as usize, style);
+    }
+}
+
 /// A departing hero turns around and walks off to the left (SPEC §5.4).
 fn walk_off(h: &Hero) -> (i32, bool) {
     h.leaving_ms
@@ -282,6 +320,8 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         }
         let (dx, flip) = walk_off(h);
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
+        prop(h, scene, buf, x as i32 + dx, py);
+        float_text(h, scene, buf, x, py);
         if let Some((s, fg)) = badge(h) {
             text(buf, scene.x + x + 12, scene.y, scene.right(), s, fg, 'n');
         }
@@ -354,7 +394,9 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         };
         let f = sheet(&format!("face_{}", h.class.id())).frame("idle", ms);
         let (dx, flip) = walk_off(h);
-        halfblock::draw(buf, scene, f, x as i32 + dx, stand_y(scene, f.h), flip);
+        let py = stand_y(scene, f.h);
+        halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
+        float_text(h, scene, buf, x.saturating_sub(4), py);
         if let Some((s, fg)) = badge(h) {
             text(buf, scene.x + x + 7, scene.y, scene.right(), s, fg, 'n');
         }

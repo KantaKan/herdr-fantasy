@@ -4,6 +4,7 @@ mod herdr;
 mod logging;
 mod palette;
 mod render;
+mod transcript;
 
 use clap::{Parser, Subcommand};
 

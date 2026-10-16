@@ -10,6 +10,10 @@ use super::xp;
 pub const QUEST_END_IDLE_MS: u64 = 10_000;
 pub const QUEST_COMPLETE_XP: u64 = 25;
 const LEVEL_UP_MS: u64 = 2_000;
+/// How long floating text (damage, "learned: …", combos) stays up.
+pub const FLOAT_MS: u64 = 1_200;
+/// More queued actions than this collapse into a combo (SPEC §5.4).
+const MAX_QUEUE: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
@@ -19,31 +23,107 @@ pub enum Status {
     Done,
 }
 
+/// One thing a hero does for one real agent action (SPEC §5.4 tables).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     /// Edit / Write: sword swing.
     Attack,
-    /// Bash / PowerShell: spell.
+    /// Any other shell command: spell.
     Cast,
-    /// Read / Grep / Glob: open a chest.
+    /// Read tool: open a chest.
     Open,
+    /// grep / rg / Grep tool: read a big book.
+    Study,
+    /// cat / head / tail: read a scroll.
+    Scroll,
+    /// ls / find / Glob / web: spyglass.
+    Scout,
+    /// curl / wget: a messenger bird flies off.
+    Bird,
+    /// git commit: wax seal.
+    Seal,
+    /// git push: carrier pigeon flies off.
+    PigeonOut,
+    /// git pull / fetch: a pigeon lands.
+    PigeonIn,
+    /// package installs: shopping, a coin pops.
+    Shop,
+    /// rm / del: fireball.
+    Fireball,
+    /// mkdir / touch / cp / mv: anvil.
+    Craft,
+    /// sleep: dozes standing up.
+    Doze,
+    /// Skill tool: glowing spellbook.
+    Spellbook,
+}
+
+/// How an action's prop moves while it plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Motion {
+    /// Held at the hero's hands.
+    Hand,
+    /// Flies away to the right.
+    Out,
+    /// Flies in from the right and lands at the hands.
+    In,
+    /// Pops up above the head.
+    Rise,
 }
 
 impl Action {
-    /// One pass of the real animation (ART.md §4 frames × ms).
+    /// How long the action plays.
     pub fn duration_ms(self) -> u64 {
         match self {
             Action::Attack => 3 * 80,
             Action::Cast => 4 * 100,
             Action::Open => 4 * 120,
+            Action::Craft => 600,
+            Action::Fireball | Action::Bird | Action::PigeonOut | Action::PigeonIn => 800,
+            Action::Study | Action::Scroll | Action::Spellbook | Action::Doze => 1_000,
+            Action::Scout | Action::Seal | Action::Shop => 700,
         }
+    }
+
+    /// The hero's pose while it plays.
+    pub fn pose(self) -> Anim {
+        match self {
+            Action::Attack | Action::Craft => Anim::Attack,
+            Action::Cast | Action::Fireball | Action::Bird => Anim::Cast,
+            Action::Open => Anim::Open,
+            Action::Doze => Anim::Idle,
+            _ => Anim::Hold,
+        }
+    }
+
+    /// Prop sprite (`prop_<name>`) and how it moves.
+    pub fn prop(self) -> Option<(&'static str, Motion)> {
+        Some(match self {
+            Action::Attack | Action::Cast | Action::Doze => return None,
+            Action::Open => ("chest", Motion::Hand),
+            Action::Study => ("book", Motion::Hand),
+            Action::Scroll => ("scroll", Motion::Hand),
+            Action::Scout => ("spyglass", Motion::Hand),
+            Action::Bird => ("bird", Motion::Out),
+            Action::Seal => ("seal", Motion::Hand),
+            Action::PigeonOut => ("pigeon", Motion::Out),
+            Action::PigeonIn => ("pigeon", Motion::In),
+            Action::Shop => ("coin", Motion::Rise),
+            Action::Fireball => ("fireball", Motion::Out),
+            Action::Craft => ("anvil", Motion::Hand),
+            Action::Spellbook => ("spellbook", Motion::Hand),
+        })
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Anim {
+    /// Standing still (dozing).
+    Idle,
     Sit,
     Walk,
+    /// Arms forward, holding a prop.
+    Hold,
     Attack,
     Cast,
     Open,
@@ -55,8 +135,10 @@ impl Anim {
     /// Sprite sheet tag name.
     pub fn tag(self) -> &'static str {
         match self {
+            Anim::Idle => "idle",
             Anim::Sit => "sit",
             Anim::Walk => "walk",
+            Anim::Hold => "hold",
             Anim::Attack => "attack",
             Anim::Cast => "cast",
             Anim::Open => "open",
@@ -189,6 +271,12 @@ pub struct Hero {
     pub leaving_ms: Option<u64>,
     /// `None` for demo heroes.
     pub seat: Option<Seat>,
+    /// Floating text above the head (text, palette key, ms left).
+    pub float: Option<(String, char, u64)>,
+    /// Actions collapsed into the current combo.
+    combo: u32,
+    /// The title came from a real prompt (beats herdr's terminal title).
+    pub title_from_prompt: bool,
 }
 
 impl Hero {
@@ -211,6 +299,9 @@ impl Hero {
             last_active_ms: 0,
             leaving_ms: None,
             seat: None,
+            float: None,
+            combo: 0,
+            title_from_prompt: false,
         }
     }
 
@@ -219,11 +310,7 @@ impl Hero {
             return Anim::Walk;
         }
         if let Some((a, _)) = self.action {
-            return match a {
-                Action::Attack => Anim::Attack,
-                Action::Cast => Anim::Cast,
-                Action::Open => Anim::Open,
-            };
+            return a.pose();
         }
         match self.status {
             Status::Idle => Anim::Sit,
@@ -254,16 +341,33 @@ impl Hero {
         });
     }
 
-    /// Queue a one-shot action. Ignored unless working.
+    /// Queue a one-shot action. Ignored unless working. Past `MAX_QUEUE` pending
+    /// actions, extra ones collapse into a combo counter instead of piling up.
     pub fn act(&mut self, action: Action, detail: Option<String>) {
         if self.status != Status::Working {
             return;
         }
-        self.queue.push_back(action);
         if detail.is_some() {
             self.detail = detail;
         }
+        if self.queue.len() >= MAX_QUEUE {
+            self.combo += 1;
+            self.say(format!("x{} combo!", self.combo + MAX_QUEUE as u32), 'y');
+            return;
+        }
+        self.queue.push_back(action);
         self.track(|h| h.start_next());
+    }
+
+    /// Show floating text above the hero.
+    pub fn say(&mut self, text: String, color: char) {
+        self.float = Some((text, color, FLOAT_MS));
+    }
+
+    /// The playing action and how far through it is (0.0–1.0).
+    pub fn action(&self) -> Option<(Action, f32)> {
+        self.action
+            .map(|(a, left)| (a, 1.0 - left as f32 / a.duration_ms() as f32))
     }
 
     fn start_next(&mut self) {
@@ -280,6 +384,15 @@ impl Hero {
     pub fn update(&mut self, dt_ms: u64) -> Option<QuestDone> {
         self.anim_ms += dt_ms;
         self.level_up_ms = self.level_up_ms.saturating_sub(dt_ms);
+        if let Some((_, _, left)) = &mut self.float {
+            *left = left.saturating_sub(dt_ms);
+            if *left == 0 {
+                self.float = None;
+            }
+        }
+        if self.queue.is_empty() {
+            self.combo = 0;
+        }
         if let Some(ms) = &mut self.leaving_ms {
             *ms += dt_ms;
         }
@@ -331,12 +444,18 @@ impl Hero {
             Status::Idle | Status::Done => {
                 q.idle_ms += dt;
                 if q.idle_ms >= QUEST_END_IDLE_MS {
-                    self.gain_xp(QUEST_COMPLETE_XP);
-                    return self.end_quest("complete");
+                    return self.finish_quest();
                 }
             }
         }
         None
+    }
+
+    /// Complete the open quest (+25 XP), if any.
+    pub fn finish_quest(&mut self) -> Option<QuestDone> {
+        self.quest.as_ref()?;
+        self.gain_xp(QUEST_COMPLETE_XP);
+        self.end_quest("complete")
     }
 
     /// Close the open quest (if any) with `result`.
@@ -471,6 +590,40 @@ mod tests {
         assert_eq!(Class::for_agent(&c, "grok"), Class::Bard);
         c.insert("default".into(), "Cleric".into());
         assert_eq!(Class::for_agent(&c, "grok"), Class::Cleric);
+    }
+
+    #[test]
+    fn flood_of_actions_becomes_a_combo() {
+        let mut h = working();
+        for _ in 0..20 {
+            h.act(Action::Attack, None);
+        }
+        // one playing + MAX_QUEUE waiting; the rest are a combo
+        assert_eq!(h.queue.len(), MAX_QUEUE);
+        assert_eq!(h.float.as_ref().unwrap().0, "x19 combo!");
+        for _ in 0..=MAX_QUEUE {
+            h.update(Action::Attack.duration_ms());
+        }
+        assert!(!h.busy());
+        h.update(1);
+        assert_eq!(h.combo, 0);
+    }
+
+    #[test]
+    fn every_action_has_a_pose_and_a_duration() {
+        use Action::*;
+        for a in [
+            Attack, Cast, Open, Study, Scroll, Scout, Bird, Seal, PigeonOut, PigeonIn, Shop,
+            Fireball, Craft, Doze, Spellbook,
+        ] {
+            assert!(a.duration_ms() > 0);
+            let mut h = working();
+            h.act(a, None);
+            assert_eq!(h.anim(), a.pose());
+            h.update(a.duration_ms() / 2);
+            let (_, p) = h.action().unwrap();
+            assert!((0.4..0.6).contains(&p), "{a:?} {p}");
+        }
     }
 
     #[test]

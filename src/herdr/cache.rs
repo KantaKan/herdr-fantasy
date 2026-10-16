@@ -7,7 +7,7 @@
 //! get right and stays inside the 300 ms "sidebar to stage" budget (SPEC §15 Q4).
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::Duration;
 
@@ -19,6 +19,8 @@ use super::types::{AgentInfo, AgentStatus, Snapshot};
 use crate::game::hero::Status;
 use crate::game::party::LiveAgent;
 use crate::game::repo::{self, Repo};
+use crate::transcript::claude::{self, Entry};
+use crate::transcript::tail::Tail;
 
 const VISIBLE_POLL: Duration = Duration::from_millis(200);
 const HIDDEN_POLL: Duration = Duration::from_millis(1000);
@@ -50,6 +52,15 @@ pub enum Update {
     Party {
         agents: Vec<LiveAgent>,
         visible: bool,
+    },
+    /// New transcript lines for one agent.
+    Transcript {
+        pane_id: String,
+        entries: Vec<Entry>,
+        /// Read on first sight of this transcript: state only, no animation.
+        history: bool,
+        /// The pane switched to a different transcript (new session / `/clear`).
+        new_chapter: bool,
     },
     /// Connection to herdr lost; the thread keeps retrying.
     Lost,
@@ -116,6 +127,93 @@ pub fn party(
     (agents, visible)
 }
 
+fn claude_dir() -> PathBuf {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            directories::BaseDirs::new()
+                .map(|d| d.home_dir().join(".claude"))
+                .unwrap_or_else(|| ".claude".into())
+        })
+}
+
+/// Transcript file per live Claude agent in the party (SPEC §3.3).
+pub fn transcripts(
+    snap: &Snapshot,
+    me: Option<&Me>,
+    all_workspaces: bool,
+    claude_dir: &Path,
+) -> Vec<(String, PathBuf)> {
+    snap.agents
+        .iter()
+        .filter(|a| all_workspaces || me.is_none_or(|m| a.workspace_id == m.workspace))
+        .filter(|a| a.agent.as_deref() == Some("claude"))
+        .filter_map(|a| {
+            let s = a.agent_session.as_ref()?;
+            let cwd = a.cwd.as_deref().unwrap_or(".");
+            Some((
+                a.pane_id.clone(),
+                claude::transcript_path(&s.kind, &s.value, cwd, claude_dir),
+            ))
+        })
+        .collect()
+}
+
+/// Follows each agent's transcript; remembers which file each pane was on.
+#[derive(Default)]
+struct Tails {
+    by_pane: HashMap<String, (PathBuf, Tail)>,
+}
+
+impl Tails {
+    fn poll(&mut self, wanted: Vec<(String, PathBuf)>, tx: &Sender<Update>) -> bool {
+        self.by_pane
+            .retain(|pane, _| wanted.iter().any(|(p, _)| p == pane));
+        for (pane, path) in wanted {
+            let known = self.by_pane.get(&pane).map(|(p, _)| p.clone());
+            if known.as_ref() != Some(&path) {
+                // First sight of this file (missing ones are retried next poll).
+                let Ok((tail, history)) = Tail::open(&path) else {
+                    continue;
+                };
+                let entries = history.iter().flat_map(|l| claude::parse(l)).collect();
+                let u = Update::Transcript {
+                    pane_id: pane.clone(),
+                    entries,
+                    history: true,
+                    new_chapter: known.is_some(),
+                };
+                self.by_pane.insert(pane, (path, tail));
+                if tx.send(u).is_err() {
+                    return false;
+                }
+                continue;
+            }
+            let (_, tail) = self.by_pane.get_mut(&pane).unwrap();
+            let lines = match tail.poll() {
+                Ok(l) => l,
+                Err(e) => {
+                    tracing::debug!("transcript {}: {e}", path.display());
+                    continue;
+                }
+            };
+            let entries: Vec<Entry> = lines.iter().flat_map(|l| claude::parse(l)).collect();
+            if !entries.is_empty() {
+                let u = Update::Transcript {
+                    pane_id: pane,
+                    entries,
+                    history: false,
+                    new_chapter: false,
+                };
+                if tx.send(u).is_err() {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
 pub fn spawn(me: Option<Me>, all_workspaces: bool) -> (Receiver<Update>, Sender<Cmd>) {
     let (tx, rx) = mpsc::channel();
     let (cmd_tx, cmd_rx) = mpsc::channel();
@@ -136,6 +234,8 @@ fn run(tx: Sender<Update>, cmds: Receiver<Cmd>, me: Option<Me>, all_workspaces: 
     };
     let mut backoff = BACKOFF_MIN;
     let mut last: Option<Update> = None;
+    let mut tails = Tails::default();
+    let claude_dir = claude_dir();
     loop {
         let mut send = |u: Update| {
             if last.as_ref() == Some(&u) {
@@ -193,6 +293,10 @@ fn run(tx: Sender<Update>, cmds: Receiver<Cmd>, me: Option<Me>, all_workspaces: 
             if !send(Update::Party { agents, visible }) {
                 return; // stage exited
             }
+            let wanted = transcripts(&snap, me.as_ref(), all_workspaces, &claude_dir);
+            if !tails.poll(wanted, &tx) {
+                return;
+            }
             std::thread::sleep(if visible { VISIBLE_POLL } else { HIDDEN_POLL });
         }
     }
@@ -240,6 +344,60 @@ mod tests {
         };
         let (without_me, _) = party(&snap, Some(&me_is_agent), true, &mut repo_of);
         assert_eq!(without_me.len(), snap.agents.len() - 1);
+    }
+
+    #[test]
+    fn transcript_paths_for_claude_agents() {
+        let snap = fixture();
+        let t = transcripts(&snap, None, true, Path::new("/claude"));
+        let claudes = snap
+            .agents
+            .iter()
+            .filter(|a| a.agent.as_deref() == Some("claude") && a.agent_session.is_some())
+            .count();
+        assert_eq!(t.len(), claudes);
+        assert!(t[0].1.starts_with("/claude/projects"));
+        assert_eq!(t[0].1.extension().unwrap(), "jsonl");
+    }
+
+    #[test]
+    fn tails_send_history_then_new_lines_then_new_chapter() {
+        let dir = std::env::temp_dir().join(format!("hf-tails-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = (dir.join("a.jsonl"), dir.join("b.jsonl"));
+        let prompt =
+            |s: &str| format!("{{\"type\":\"user\",\"message\":{{\"content\":\"{s}\"}}}}\n");
+        std::fs::write(&a, prompt("old")).unwrap();
+        std::fs::write(&b, prompt("fresh")).unwrap();
+        let (tx, rx) = mpsc::channel();
+        let mut tails = Tails::default();
+        assert!(tails.poll(vec![("p".into(), a.clone())], &tx));
+        let first = rx.try_recv().unwrap();
+        assert!(
+            matches!(&first, Update::Transcript { history: true, new_chapter: false, entries, .. } if entries.len() == 1)
+        );
+        std::fs::OpenOptions::new().append(true).open(&a).unwrap();
+        use std::io::Write;
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&a)
+            .unwrap()
+            .write_all(prompt("new").as_bytes())
+            .unwrap();
+        tails.poll(vec![("p".into(), a.clone())], &tx);
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            Update::Transcript { history: false, .. }
+        ));
+        tails.poll(vec![("p".into(), b)], &tx);
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            Update::Transcript {
+                new_chapter: true,
+                history: true,
+                ..
+            }
+        ));
     }
 
     #[test]

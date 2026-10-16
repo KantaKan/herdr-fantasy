@@ -61,7 +61,7 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
         frame_loop(t, &mut world, false, |w, real_ms| {
             visible = drain(&rx, &cmds, w, config, &mut store, visible);
             w.update(real_ms as u64);
-            persist(w, &mut store, &mut last_save);
+            persist(w, &mut store, &mut last_save, config.store_prompt_text);
             visible
         })
     });
@@ -100,6 +100,21 @@ fn drain(
                 }
                 visible = v;
             }
+            Ok(Update::Transcript {
+                pane_id,
+                entries,
+                history,
+                new_chapter,
+            }) => party::feed(
+                w,
+                party::Feed {
+                    pane_id: &pane_id,
+                    entries: &entries,
+                    history,
+                    new_chapter,
+                },
+                &cfg.context_window,
+            ),
             Ok(Update::Lost) => w.banner = Some("reconnecting to herdr…".into()),
             Err(TryRecvError::Empty) => return visible,
             Err(TryRecvError::Disconnected) => {
@@ -111,7 +126,7 @@ fn drain(
 }
 
 /// Write finished quests to the log; save progress on level-up / quest end / every 30 s.
-fn persist(w: &mut World, store: &mut Store, last_save: &mut Instant) {
+fn persist(w: &mut World, store: &mut Store, last_save: &mut Instant, store_prompts: bool) {
     let ended = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64);
@@ -121,7 +136,7 @@ fn persist(w: &mut World, store: &mut Store, last_save: &mut Instant) {
             &seat.repo.key,
             &QuestRecord {
                 hero: &f.hero,
-                title: &f.quest.title,
+                title: &crate::game::persist::logged_title(&f.quest.title, store_prompts),
                 duration_ms: f.quest.duration_ms,
                 xp: f.quest.xp,
                 result: f.quest.result,

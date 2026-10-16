@@ -68,13 +68,14 @@ schema with `herdr api schema --json` at implementation time and fix this sectio
 ### 3.3 Agent Transcripts (for rich events) — ADR-0001
 - herdr's built-in integrations (`herdr integration install claude`) run a `SessionStart` hook that calls `herdr pane report-agent-session --agent-session-id … --agent-session-path <transcript_path> --session-start-source …`. We read that back from `AgentInfo.agent_session`. We install **no hooks of our own**.
 - `agent_session.kind == "path"` → `value` is the transcript. `kind == "id"` (what Claude panes report on 0.9.3) → the transcript is `~/.claude/projects/<slug(cwd)>/<value>.jsonl`, where `slug` replaces every non-alphanumeric character of the agent's `cwd` with `-` (`D:\code\hrdr-game` → `D--code-hrdr-game`). Verified against real files.
-- The Claude transcript is JSONL. Entries we use (⚠️ verify every field name against a real transcript at M4 and update this list):
-  - user message → new Quest, title = first line of the prompt text.
-  - assistant `tool_use` blocks: `id`, `name` (`Read`, `Edit`, `Bash`, `PowerShell`, `Task`/`Agent`, …), `input` (`file_path`, `command`, …).
-  - user `tool_result` blocks: `tool_use_id`, `is_error`.
-  - assistant `message.usage`: `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`.
-  - compaction marker (`compact_boundary` / summary entry) → Rest.
-- The transcript may lag the live conversation by one flush; that is accepted.
+- The Claude transcript is JSONL. Entries we use (**verified against real transcripts at M4**; fixture `tests/fixtures/claude_transcript.jsonl`, scrubbed):
+  - prompt: `type:"user"` with `message.content` a **string**. Skip `isMeta: true`, `isCompactSummary: true`, `isSidechain: true`, and strings starting with `<` (command echoes). Text blocks `[Request interrupted…]` are not prompts.
+  - tool call: `type:"assistant"`, `message.content[]` block `{type:"tool_use", id, name, input}`. Names seen: `Read`, `Edit`, `Write`, `Grep`, `Glob`, `Bash`, `PowerShell`, `Skill` (`input.skill`), `Agent` (subagents: `input.subagent_type`, `description`, `prompt`, `run_in_background`), `AskUserQuestion`, `mcp__*`.
+  - tool result: `type:"user"`, block `{type:"tool_result", tool_use_id, is_error?}`. A non-zero Bash/PowerShell exit **does** set `is_error: true` (content starts `Exit code N`).
+  - usage: `message.usage` on assistant lines; context = `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`; `message.model` names the model.
+  - compaction: `type:"system", subtype:"compact_boundary"`, `compactMetadata: {trigger, preTokens, postTokens}`, followed by an `isCompactSummary` user line.
+  - lots of other line types (`attachment`, `mode`, `ai-title`, `file-history-*`, …) are ignored.
+- **Measured lag:** Claude Code flushes the transcript in batches; a tool call became readable ~2.3 s after it started (Windows, 2026-10-16). Animations therefore trail the agent by ~2–3 s. Accepted for v1 (ADR-0001).
 - A change of `agent_session.value` for a pane = new session → new Chapter.
 - v1 parses Claude transcripts only. Other agents get status-level animations; the parser emits agent-neutral `GameEvent`s so Codex (`~/.codex/sessions/*.jsonl`) can be added later.
 
@@ -250,7 +251,9 @@ command = ["./target/release/herdr-fantasy", "ask"]
 | herdr | `done` (not yet seen) | victory pose + sparkle loop until seen |
 | herdr | pane closed / agent gone | hero walks off-screen to the left |
 | transcript | new user prompt | new quest banner slides in (tachyonfx sweep) |
-| transcript | `Read` / `Grep` / `Glob` / `LS` | walks to a chest, opens it, item icon pops |
+| transcript | `Read` | opens a treasure chest |
+| transcript | `Grep` | reads the big book |
+| transcript | `Glob` / `LS` | spyglass scout |
 | transcript | `WebSearch` / `WebFetch` | raises spyglass, scanning sparkle |
 | transcript | `Edit` / `Write` / `MultiEdit` / `NotebookEdit` | one sword swing at nearest slime; damage number = lines changed (clamped 1–999) |
 | transcript | `Bash` / `PowerShell` (not a boss command) | casts spell, rune circle effect |
@@ -278,6 +281,8 @@ command = ["./target/release/herdr-fantasy", "ask"]
 | `mkdir`, `touch`, `cp`, `mv`, `New-Item` | hammers on an anvil |
 | `sleep`, `Start-Sleep` | dozes standing up |
 | `Skill` tool | opens a glowing spellbook; floating text `learned: <skill name>` |
+
+Implemented in `game/moves.rs` (pure, table-tested). Edits float a damage number (`-N`, lines written, 1–999). Props are 8×8 sprites (`prop_*`, `tools/gen_props.py`) held at the hands, flown off/in, or popped up; heroes use a `hold` pose for held props.
 
 Rules:
 - Transcript events queue per hero; play at most one action animation at a time; if the queue exceeds 6, collapse into a combo ("x7 slashes!").
@@ -561,7 +566,7 @@ state/
 3. Behavior of plugin panes after herdr server restart / live handoff. (Not tested yet: it means restarting the user's server.) Also seen once: a fresh stage landed at 59/41 instead of 75/25; five retries all gave 74/26.
 4. ~~Event stream vs polling~~ Resolved: status-changed subscriptions are per pane; v1 polls `session.snapshot` (§3.2).
 5. Kitty graphics probe results inside herdr panes, locally and over SSH.
-6. Claude transcript field names (tool_use, tool_result `is_error`, usage, compaction marker, subagent tool name `Task` vs `Agent`), and whether a non-zero exit sets `is_error` for Bash and PowerShell.
+6. ~~Transcript field names~~ Resolved in §3.3 (subagent tool is `Agent`; non-zero exit sets `is_error`).
 7. Herdr agent `agent` field values for each supported agent (for class mapping). Integrations on herdr 0.9.3: pi, omp, claude, codex, copilot, devin, droid, kimi, opencode, kilo, hermes, qodercli, qwen, cursor, mastracode, antigravity-cli, grok, letta.
 8. ~~Windows socket~~ Resolved: named pipe (§3.2). Still open: whether file-change notifications on transcripts are reliable on Windows (M4).
 

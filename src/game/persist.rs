@@ -45,6 +45,23 @@ pub struct QuestRecord<'a> {
     pub ended_unix_ms: u64,
 }
 
+/// Quest title as written to the log. With `store_prompt_text = false` (SPEC §5.6) only
+/// a short hash is kept, so prompt text never lands on disk.
+pub fn logged_title(title: &str, store_prompts: bool) -> String {
+    if store_prompts {
+        return title.to_string();
+    }
+    use sha2::{Digest, Sha256};
+    let d = Sha256::digest(title.as_bytes());
+    format!(
+        "prompt#{}",
+        d[..4]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    )
+}
+
 pub struct Store {
     root: PathBuf,
     parties: HashMap<String, PartyFile>,
@@ -207,6 +224,17 @@ mod tests {
         let mut s = Store::open(tmp("clean"));
         s.put("r", "h", Progress::default());
         assert!(!s.is_dirty());
+    }
+
+    #[test]
+    fn private_titles_are_hashed() {
+        assert_eq!(logged_title("fix login", true), "fix login");
+        let h = logged_title("fix login", false);
+        assert!(
+            h.starts_with("prompt#") && h.len() == 15 && !h.contains("login"),
+            "{h}"
+        );
+        assert_eq!(h, logged_title("fix login", false));
     }
 
     #[test]

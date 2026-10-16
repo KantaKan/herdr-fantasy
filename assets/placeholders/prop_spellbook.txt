@@ -1,0 +1,18 @@
+# tag a 220
+...k....
+.kkwkkk.
+kppppppk
+kbbbbbpk
+kbbccbpk
+kbbbbbk.
+.kkkkkk.
+........
+
+...k....
+.kkCkkk.
+kppppppk
+kbbbbbpk
+kbbCCbpk
+kbbbbbk.
+.kkkkkk.
+........

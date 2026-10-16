@@ -4,9 +4,11 @@
 use std::collections::BTreeMap;
 
 use super::hero::{Class, Hero, Seat, Status};
+use super::moves;
 use super::persist::Store;
 use super::repo::Repo;
 use super::world::{Finished, World};
+use crate::transcript::claude::Entry;
 
 /// What the herdr side tells us about one agent, already resolved to a repo.
 #[derive(Debug, Clone, PartialEq)]
@@ -107,7 +109,8 @@ pub fn sync(
         }
         h.set_status(a.status);
         h.focused = a.focused;
-        if a.title.is_some() {
+        // A real prompt names the quest better than herdr's terminal title.
+        if a.title.is_some() && !h.title_from_prompt {
             h.title.clone_from(&a.title);
         }
     }
@@ -121,6 +124,105 @@ pub fn sync(
         w.repo = name.to_string();
     }
     newly_blocked
+}
+
+/// First line of a prompt, at most 60 chars (SPEC §5.6).
+pub fn prompt_title(prompt: &str) -> String {
+    let first = prompt
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    let mut t: String = first.chars().take(60).collect();
+    if first.chars().count() > 60 {
+        t.push('…');
+    }
+    t
+}
+
+/// Context window for a model (SPEC §7.4): config map, else `default`; usage above the
+/// assumed size bumps it to the 1M tier instead of showing more than 100%.
+pub fn context_pct(context: u64, model: Option<&str>, windows: &BTreeMap<String, u64>) -> u8 {
+    let mut window = model
+        .and_then(|m| windows.get(m))
+        .or_else(|| windows.get("default"))
+        .copied()
+        .unwrap_or(200_000);
+    if context > window {
+        window = window.max(1_000_000);
+    }
+    ((context * 100) / window.max(1)).min(100) as u8
+}
+
+/// Things the transcript tells us about one agent.
+pub struct Feed<'a> {
+    pub pane_id: &'a str,
+    pub entries: &'a [Entry],
+    /// Lines read on first sight: learn state from them, don't animate them.
+    pub history: bool,
+    /// The agent started a new session (`/clear`, new run): a new Chapter.
+    pub new_chapter: bool,
+}
+
+pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>) {
+    let Some(h) = w.heroes.iter_mut().find(|h| {
+        h.leaving_ms.is_none() && h.seat.as_ref().is_some_and(|s| s.pane_id == f.pane_id)
+    }) else {
+        return;
+    };
+    if f.new_chapter {
+        if let Some(quest) = h.finish_quest() {
+            w.finished.push(Finished {
+                hero: h.name.clone(),
+                seat: h.seat.clone(),
+                quest,
+            });
+        }
+        h.title_from_prompt = false;
+        h.say("— New Run —".into(), 'y');
+        w.save_now = true;
+    }
+    for e in f.entries {
+        match e {
+            Entry::Prompt(p) => {
+                // A new prompt closes the previous quest; the next work starts a new one.
+                if !f.history
+                    && let Some(quest) = h.finish_quest()
+                {
+                    w.finished.push(Finished {
+                        hero: h.name.clone(),
+                        seat: h.seat.clone(),
+                        quest,
+                    });
+                    w.save_now = true;
+                }
+                h.title = Some(prompt_title(p));
+                h.title_from_prompt = true;
+            }
+            Entry::Tool { name, input, .. } if !f.history => {
+                if let Some(m) = moves::tool_move(name, input) {
+                    h.act(m.action, Some(m.detail));
+                    if let Some((text, color)) = m.float
+                        && h.status == Status::Working
+                    {
+                        h.say(text, color);
+                    }
+                }
+            }
+            Entry::Usage { context, model } => {
+                h.context_used = Some(context_pct(*context, model.as_deref(), windows));
+            }
+            Entry::Compact { post_tokens } => {
+                if let Some(t) = post_tokens {
+                    h.context_used = Some(context_pct(*t, None, windows));
+                }
+                if !f.history {
+                    h.say("Well rested!".into(), 'C');
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 #[cfg(test)]
@@ -279,6 +381,133 @@ mod tests {
             &mut s,
         );
         assert!(again.is_empty(), "one toast per transition");
+    }
+
+    fn fed(w: &mut World, entries: &[Entry], history: bool) {
+        let windows = crate::config::Config::default().context_window;
+        feed(
+            w,
+            Feed {
+                pane_id: "p1",
+                entries,
+                history,
+                new_chapter: false,
+            },
+            &windows,
+        );
+    }
+
+    fn tool(name: &str, input: serde_json::Value) -> Entry {
+        Entry::Tool {
+            id: "t".into(),
+            name: name.into(),
+            input,
+        }
+    }
+
+    #[test]
+    fn transcript_drives_moves_titles_and_stamina() {
+        let mut w = World::new("", "");
+        let mut s = store("feed");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        fed(
+            &mut w,
+            &[
+                Entry::Prompt("fix the login redirect bug\nit loops".into()),
+                Entry::Usage {
+                    context: 100_000,
+                    model: None,
+                },
+                tool(
+                    "Edit",
+                    serde_json::json!({"file_path": "src/auth.rs", "new_string": "a\nb"}),
+                ),
+            ],
+            false,
+        );
+        let h = &w.heroes[0];
+        assert_eq!(h.title.as_deref(), Some("fix the login redirect bug"));
+        assert_eq!(h.context_used, Some(50));
+        assert_eq!(h.anim(), crate::game::hero::Anim::Attack);
+        assert_eq!(h.float.as_ref().unwrap().0, "-2");
+        // herdr's terminal title no longer overrides the prompt title
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        assert_eq!(
+            w.heroes[0].title.as_deref(),
+            Some("fix the login redirect bug")
+        );
+    }
+
+    #[test]
+    fn history_sets_state_but_never_animates() {
+        let mut w = World::new("", "");
+        let mut s = store("history");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        fed(
+            &mut w,
+            &[
+                tool("Read", serde_json::json!({"file_path": "a.rs"})),
+                Entry::Usage {
+                    context: 20_000,
+                    model: None,
+                },
+            ],
+            true,
+        );
+        assert_eq!(
+            w.heroes[0].anim(),
+            crate::game::hero::Anim::Walk,
+            "no replay"
+        );
+        assert_eq!(w.heroes[0].context_used, Some(10));
+    }
+
+    #[test]
+    fn new_prompt_completes_the_previous_quest() {
+        let mut w = World::new("", "");
+        let mut s = store("prompt-quest");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        w.update(1);
+        assert!(w.heroes[0].quest.is_some());
+        fed(&mut w, &[Entry::Prompt("next thing".into())], false);
+        assert_eq!(w.finished.len(), 1);
+        assert_eq!(w.finished[0].quest.result, "complete");
+    }
+
+    #[test]
+    fn context_tiers() {
+        let windows = crate::config::Config::default().context_window;
+        assert_eq!(context_pct(100_000, None, &windows), 50);
+        assert_eq!(
+            context_pct(500_000, Some("claude-opus-5-5"), &windows),
+            50,
+            "bumped to 1M"
+        );
+        assert_eq!(context_pct(5_000_000, None, &windows), 100);
+        assert_eq!(
+            prompt_title(&"x".repeat(70)),
+            format!("{}…", "x".repeat(60))
+        );
     }
 
     #[test]

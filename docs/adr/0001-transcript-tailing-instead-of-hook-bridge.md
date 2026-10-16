@@ -4,7 +4,7 @@ herdr's built-in agent integrations already report each session (`AgentInfo.agen
 
 ## Consequences
 
-- Animations can lag the live agent by up to one transcript flush.
+- Animations lag the live agent by one transcript flush — measured ~2.3 s (Claude Code batches its writes). Good enough for an ambient pane; a short tool may animate after it already finished.
 - Permission-prompt dialogue text comes from `pane.read`, not from the `Notification` hook message.
 - Our state isn't shown in herdr's sidebar.
 - Revisit hooks only if measured transcript lag is noticeably bad.

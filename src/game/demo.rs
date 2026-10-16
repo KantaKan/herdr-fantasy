@@ -3,8 +3,11 @@
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
+use serde_json::json;
+
 use super::boss::BossKind;
 use super::hero::{Action, Class, Status};
+use super::moves;
 use super::world::{GameEvent as E, World};
 
 /// Config `[classes]`: agent kind → class name.
@@ -32,6 +35,27 @@ const BOSSES: [(BossKind, &str); 6] = [
 
 /// Placeholder detail in the script, replaced by "running <this loop's boss command>".
 const BOSS_CMD: &str = "{boss}";
+
+/// Shell lines the demo heroes "run" — one per animation in SPEC §5.4.
+const SHELL: [&str; 11] = [
+    "rg redirect src",
+    "cat Cargo.toml",
+    "ls -la src",
+    "curl -s https://example.com/health",
+    "git commit -m 'fix redirect'",
+    "git push origin main",
+    "git pull --rebase",
+    "npm install",
+    "rm -rf target/tmp",
+    "mkdir -p src/routes",
+    "cargo fmt",
+];
+
+const SKILLS: [&str; 3] = [
+    "superpowers:brainstorming",
+    "mattpocock-skills:tdd",
+    "ponytail:ponytail",
+];
 
 const FILES: [&str; 5] = [
     "src/auth.rs",
@@ -133,12 +157,24 @@ impl Demo {
                 continue;
             }
             let file = FILES[self.rng.random_range(0..FILES.len())];
-            let (action, detail) = match self.rng.random_range(0..3) {
-                0 => (Action::Attack, format!("editing {file}")),
-                1 => (Action::Open, format!("reading {file}")),
-                _ => (Action::Cast, "running a command".to_string()),
+            let (tool, input) = match self.rng.random_range(0..SHELL.len() + 3) {
+                0 => (
+                    "Edit",
+                    json!({ "file_path": file, "new_string": "x\n".repeat(self.rng.random_range(1..40)) }),
+                ),
+                1 => ("Read", json!({ "file_path": file })),
+                2 => (
+                    "Skill",
+                    json!({ "skill": SKILLS[self.rng.random_range(0..SKILLS.len())] }),
+                ),
+                n => ("Bash", json!({ "command": SHELL[n - 3] })),
             };
-            w.apply(E::Act(i, action, Some(detail)));
+            if let Some(m) = moves::tool_move(tool, &input) {
+                w.apply(E::Act(i, m.action, Some(m.detail)));
+                if let Some((text, color)) = m.float {
+                    w.heroes[i].say(text, color);
+                }
+            }
             w.apply(E::Xp(i, 2));
         }
         w.update(dt);
