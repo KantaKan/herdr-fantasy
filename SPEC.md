@@ -454,6 +454,10 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
 - A team win pays every fighter the victory XP × 1.5, counts as a win for each (streaks too), plays an attack on each, and shows "⚔ Team attack! A + B". Loot and first-try credit go to the hero whose command won.
 - Daily quest (`game/daily.rs`): one per hero per UTC day, rolled from the hero name and the date: win 3 boss fights, finish 3 quests, raise 2 shadows, make 20 edits, read or search 30 times, or run 15 shell commands. Progress counts from the counter value at the start of the day; completing it pays +50 XP once and shows "📜 <hero> — daily quest done". Saved in `party.json` (`daily`); shown on the character sheet. The day turns over at UTC midnight (no timezone dependency).
 
+### 7.8 Pets and skins (M14)
+- Pets: config `[pets]` maps an agent kind (or `default`) to cat, dog, dragon or owl; none by default. The pet stands at its hero's front foot in the full layout, follows lunges and hops, walks and sits with it, and grows up at Lv 10 (baby 8×7 → grown 11×9, `tools/gen_pets.py`). A party with pets spreads out (hero slots 23 cells instead of 17). Compact and mini layouts show no pets.
+- Skins: recolors of the hero sprite unlocked by level: Verdant (Lv 5), Crimson (Lv 10), Royal Gold (Lv 20); the best unlocked one is worn. `skins = false` turns them off. The character sheet names the pet and skin.
+
 ### 7.4 Stamina (context window) — "what happens when context is full"
 - `STA% = 100 - context_pct`, where `context_pct = current_context_tokens / context_window_size`.
 - `context_window_size`: config map by model id, default 200,000; if usage exceeds the configured size, grow the assumed size to the next known tier (200k → 1M) instead of showing > 100%.
@@ -514,6 +518,7 @@ notify_on_blocked = true
 notify_sound = "request"        # none | done | request
 store_prompt_text = true
 show_all_workspaces = false     # stage shows only current workspace's party
+skins = true                    # costume recolors at Lv 5 / 10 / 20
 
 [classes]
 claude = "Knight"
@@ -522,6 +527,9 @@ cursor = "Rogue"
 opencode = "Ranger"
 gemini = "Cleric"
 default = "Bard"
+
+[pets]                          # agent kind → cat | dog | dragon | owl (none by default)
+claude = "dragon"
 
 [context_window]
 default = 200000

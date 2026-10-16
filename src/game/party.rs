@@ -108,6 +108,7 @@ pub fn sync(
                 hero.level = p.level.max(1);
                 hero.xp = p.xp;
                 hero.life = p.life;
+                hero.pet = w.pets.get(&a.kind).or(w.pets.get("default")).cloned();
                 hero.seat = Some(seat);
                 w.heroes.push(hero);
                 w.heroes.last_mut().unwrap()

@@ -72,6 +72,9 @@ store_prompt_text = true        # false: the quest log keeps only a hash of your
 
 [classes]                       # agent kind → Knight, Mage, Rogue, Ranger, Cleric, Bard,
 claude = "Sahur Knight"         #   or the specials "Sahur Knight" / "Wild Card"
+
+[pets]                          # a pet that follows the hero: cat, dog, dragon, owl
+claude = "dragon"
 ```
 
 `herdr-fantasy doctor` prints what it detected (socket, config, renderer).

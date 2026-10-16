@@ -380,6 +380,8 @@ pub struct Hero {
     /// Tool call id of the boss command this hero is waiting on.
     pub boss_tool: Option<String>,
     pub life: Lifetime,
+    /// Pet id from config `[pets]` (M14).
+    pub pet: Option<String>,
     /// Rest scene time left, then Well Rested buff time left.
     pub rest_ms: u64,
     pub rested_ms: u64,
@@ -420,6 +422,7 @@ impl Hero {
             title_from_prompt: false,
             boss_tool: None,
             life: Lifetime::default(),
+            pet: None,
             rest_ms: 0,
             rested_ms: 0,
             last_message: None,

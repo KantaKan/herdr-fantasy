@@ -1,0 +1,42 @@
+# tag idle 400
+...kwkkk
+..ktgggg
+..ktggyg
+kkgggggG
+gkgggkkk
+kgyyyk..
+.ktttk..
+
+....k...
+...kwkkk
+...kgggg
+k.ktgggg
+gkgggggG
+kgyyykkk
+.ktttk..
+
+# tag walk 150
+...kwkkk
+..ktgggg
+..ktggyg
+kkgggggG
+gkgggkkk
+kgyyyk..
+.ktttk..
+
+....k...
+...kwkkk
+...kgggg
+k.ktggyg
+gkgggggG
+kgyyykkk
+kttkttk.
+
+# tag sit 900
+....k...
+...kwkkk
+..ktgggg
+..ktgggg
+kkgggggG
+gkgggkkk
+kgyyyk..

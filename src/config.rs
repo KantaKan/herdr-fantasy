@@ -42,6 +42,8 @@ pub const CLASSES: [&str; 8] = [
     "Wild Card",
 ];
 
+pub const PETS: [&str; 4] = ["cat", "dog", "dragon", "owl"];
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     pub auto_open: AutoOpen,
@@ -58,6 +60,10 @@ pub struct Config {
     pub context_window: BTreeMap<String, u64>,
     /// Extra user boss rules, checked before built-ins.
     pub bosses: Bosses,
+    /// agent kind → pet (M14); `"default"` covers unknown kinds. None by default.
+    pub pets: BTreeMap<String, String>,
+    /// Costume recolors unlocked at Lv 5 / 10 / 20 (M14).
+    pub skins: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -93,6 +99,8 @@ impl Default for Config {
                 .collect(),
             context_window: BTreeMap::from([("default".to_string(), 200_000)]),
             bosses: Bosses::default(),
+            pets: BTreeMap::new(),
+            skins: true,
         }
     }
 }
@@ -128,6 +136,10 @@ impl Config {
                     })
                 }
                 "bosses" => set(&mut c.bosses, &key, value, &mut warn),
+                "pets" => merge(&mut c.pets, &key, value, &mut warn, |v: &String| {
+                    PETS.contains(&v.as_str())
+                }),
+                "skins" => set(&mut c.skins, &key, value, &mut warn),
                 _ => warn.push(format!("unknown key `{key}` ignored")),
             }
         }
@@ -252,6 +264,21 @@ mod tests {
         let (c, w) = Config::parse("render = ");
         assert_eq!(c, Config::default());
         assert_eq!(w.len(), 1);
+    }
+
+    #[test]
+    fn pets_are_checked() {
+        let (c, w) = Config::parse(
+            "skins = false
+[pets]
+claude = \"dragon\"
+codex = \"unicorn\"
+",
+        );
+        assert_eq!(c.pets["claude"], "dragon");
+        assert!(!c.pets.contains_key("codex"));
+        assert!(!c.skins);
+        assert_eq!(w.len(), 1, "{w:?}");
     }
 
     #[test]

@@ -209,6 +209,9 @@ pub struct World {
     pub memes: bool,
     /// Today as days since 1970 (UTC), set by the frame loop; 0 = no daily quests.
     pub today: u32,
+    /// Config `[pets]` (agent kind → pet) and `skins` (M14).
+    pub pets: std::collections::BTreeMap<String, String>,
+    pub skins: bool,
 }
 
 impl World {
@@ -233,6 +236,8 @@ impl World {
             duck: Default::default(),
             memes: true,
             today: 0,
+            pets: Default::default(),
+            skins: true,
         }
     }
 

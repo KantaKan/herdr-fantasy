@@ -220,6 +220,15 @@ pub fn character(w: &World, hero: Option<&Hero>, area: Rect, buf: &mut Buffer) {
             l.bosses_won, l.bosses_lost, l.best_streak
         ),
         format!("Shadows raised {}", l.shadows),
+        match (
+            &h.pet,
+            crate::game::skins::for_level(h.level).filter(|_| w.skins),
+        ) {
+            (Some(p), Some(s)) => format!("Pet {p} · Skin {}", s.name),
+            (Some(p), None) => format!("Pet {p} · next skin at Lv 5"),
+            (None, Some(s)) => format!("Skin {}", s.name),
+            (None, None) => "Next skin at Lv 5".into(),
+        },
     ] {
         put(buf, area, tx, y, &line, 's', false);
         y += 1;

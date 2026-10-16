@@ -402,17 +402,30 @@ fn plus_n(w: &World, scene: Rect, buf: &mut Buffer, x: u16, drawn: usize) {
 
 fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
-    const STEP: u16 = 17;
+    // Pets stand at their hero's front foot, so a party with pets spreads out.
+    let step: u16 = if w.heroes.iter().any(|h| h.pet.is_some()) {
+        23
+    } else {
+        17
+    };
     let enemy_zone = 28;
-    let slots = (scene.width.saturating_sub(enemy_zone + 1) / STEP).clamp(1, MAX_DRAWN as u16);
+    let slots = (scene.width.saturating_sub(enemy_zone + 1) / step).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);
     let mut counts = Vec::new();
     for (i, h) in w.heroes.iter().take(drawn).enumerate() {
-        let x = 1 + i as u16 * STEP;
+        let x = 1 + i as u16 * step;
         // Exhausted heroes walk at half speed (SPEC §5.4).
         let slow = h.anim() == Anim::Walk && h.fatigue() == Fatigue::Exhausted;
         let ms = if slow { h.anim_ms / 2 } else { h.anim_ms };
         let f = sheet(&format!("hero_{}", h.class.id())).frame(h.anim().tag(), ms);
+        let skinned;
+        let f = match crate::game::skins::for_level(h.level).filter(|_| w.skins) {
+            Some(skin) => {
+                skinned = super::sprites::recolor(f, skin.swaps);
+                &skinned
+            }
+            None => f,
+        };
         let ground = stand_y(scene, f.h);
         if h.level_up_ms > 0 {
             level_up(w, scene, buf, x, h.level_up_ms);
@@ -439,6 +452,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         summons(w, h, scene, buf, x as i32 + dx + 11);
         counts.push((h, x as i32 + dx + 11));
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
+        pet(w, h, scene, buf, x as i32 + dx + 12, py - ground, flip);
         prop(h, scene, buf, x as i32 + dx, py);
         condition(w, h, scene, buf, x as i32 + dx, py, i as u64);
         float_text(h, scene, buf, x, py);
@@ -460,7 +474,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     for (h, x) in counts {
         summon_count(h, scene, buf, x);
     }
-    plus_n(w, scene, buf, 1 + drawn as u16 * STEP, drawn);
+    plus_n(w, scene, buf, 1 + drawn as u16 * step, drawn);
 
     let right = scene.width as i32;
     if let Some(b) = &w.boss {
@@ -584,6 +598,19 @@ fn summons(w: &World, h: &Hero, scene: Rect, buf: &mut Buffer, x: i32) {
             );
         }
     }
+}
+
+/// The hero's pet at its front foot; it grows up at Lv 10 and hops with its hero (M14).
+fn pet(w: &World, h: &Hero, scene: Rect, buf: &mut Buffer, x: i32, hop: i32, flip: bool) {
+    let Some(id) = &h.pet else { return };
+    let stage = if h.level >= 10 { "grown" } else { "baby" };
+    let tag = match h.anim() {
+        Anim::Walk => "walk",
+        Anim::Sit => "sit",
+        _ => "idle",
+    };
+    let f = sheet(&format!("pet_{id}_{stage}")).frame(tag, w.clock_ms);
+    halfblock::draw(buf, scene, f, x, stand_y(scene, f.h) + hop, flip);
 }
 
 /// `+N` for Summons past the third. Drawn after every hero: the 2nd and 3rd Summon

@@ -101,6 +101,11 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         w.add_hero("Codex", Class::for_agent(classes, "codex")),
         w.add_hero("OpenCode", Class::for_agent(classes, "opencode")),
     );
+    // Show off M14: a grown dragon and the Crimson skin, a Verdant Mage with a baby owl.
+    for (i, level, pet) in [(k, 12, "dragon"), (m, 6, "owl"), (r, 1, "cat")] {
+        w.heroes[i].level = level;
+        w.heroes[i].pet = Some(pet.into());
+    }
     let test = || Some(BOSS_CMD.to_string());
     let mut script = vec![
         (0, E::Title(k, "fix login redirect bug".into())),

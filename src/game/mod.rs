@@ -9,6 +9,7 @@ pub mod moves;
 pub mod party;
 pub mod persist;
 pub mod repo;
+pub mod skins;
 pub mod summon;
 pub mod town;
 pub mod world;

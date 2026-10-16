@@ -119,6 +119,21 @@ pub fn sheets() -> &'static HashMap<&'static str, Sheet> {
     })
 }
 
+/// A copy of `f` with palette colors swapped (hero skins, M14).
+pub fn recolor(f: &Frame, swaps: &[(char, char)]) -> Frame {
+    let map: Vec<([u8; 3], [u8; 3])> = swaps
+        .iter()
+        .map(|&(a, b)| (crate::palette::rgb(a), crate::palette::rgb(b)))
+        .collect();
+    let swap = |c: [u8; 3]| map.iter().find(|(a, _)| *a == c).map_or(c, |(_, b)| *b);
+    Frame {
+        w: f.w,
+        h: f.h,
+        px: f.px.iter().map(|p| p.map(swap)).collect(),
+        ms: f.ms,
+    }
+}
+
 pub fn sheet(name: &str) -> &'static Sheet {
     sheets()
         .get(name)

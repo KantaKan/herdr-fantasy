@@ -1,0 +1,42 @@
+# tag idle 400
+.k.krkko
+kokkoooo
+okkkokok
+ooroooro
+kooookkk
+kyyyyk..
+kooook..
+
+....k..k
+.k.krkko
+kokkoooo
+okkkoooo
+ooroooro
+kyyyykkk
+kooook..
+
+# tag walk 150
+.k.krkko
+kokkoooo
+okkkokok
+ooroooro
+kooookkk
+kyyyyk..
+kooook..
+
+....k..k
+.k.krkko
+kokkoooo
+okkkokok
+ooroooro
+kyyyykkk
+okookok.
+
+# tag sit 900
+....k..k
+...krkko
+...koooo
+.kkkoooo
+koroooro
+kooookkk
+oyyyyk..

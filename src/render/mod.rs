@@ -78,6 +78,7 @@ pub fn run_demo(
     sprites::sheets(); // decode before the first frame
     world.reduced_motion = config.reduced_motion;
     world.memes = config.memes;
+    world.skins = config.skins;
     let speed = speed.max(0.0) as f64;
     let mut carry = 0.0;
     let mut bench_state = bench.map(|limit| {
@@ -129,6 +130,8 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
     world.banner = Some("looking for herdr…".into());
     world.reduced_motion = config.reduced_motion;
     world.memes = config.memes;
+    world.pets.clone_from(&config.pets);
+    world.skins = config.skins;
     sprites::sheets();
     let mut visible = true;
     let mut last_save = Instant::now();

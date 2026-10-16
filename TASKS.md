@@ -129,9 +129,9 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** two heroes beating one boss both get XP with the combo float; a daily quest completes and pays once per day. (2026-10-16: `a_second_hero_joins_the_fight_and_both_get_team_xp`, `daily_quest_pays_once`, `completes_once_and_rolls_over_each_day`.)
 
 ## M14 — Pets + hero skins
-- [ ] Pets (`[pets] claude = "cat"`; cat, dog, dragon, owl): a small sprite that follows its hero, hops when it hops, sits at camp; grows up at Lv 5 and Lv 15.
-- [ ] Skins: costume recolors unlocked at Lv 5 / 10 / 20 (`skin = "auto"` picks the best unlocked).
-  **Done when:** a configured pet follows its hero in the stage and the GIF; a Lv 10 hero shows its unlocked skin.
+- [x] Pets (`[pets] claude = "cat"`; cat, dog, dragon, owl): a small sprite that follows its hero, hops when it hops, sits at camp; grows up at Lv 10 (two stages instead of the planned three, to keep the art small).
+- [x] Skins: costume recolors unlocked at Lv 5 / 10 / 20; the best unlocked is worn (`skins = false` turns them off — simpler than a per-hero `skin` choice).
+  **Done when:** a configured pet follows its hero in the stage and the GIF; a Lv 10 hero shows its unlocked skin. (2026-10-16: demo party — Lv 12 Crimson Claude with a grown dragon, Lv 6 Verdant Mage with a baby owl, a cat — in previews and snapshots; GIF refresh at the end of M15.)
 
 ## M15 — Weekly recap + big hero mode
 - [ ] `w` opens a weekly recap from the quest log: quests, XP, bosses won/lost, best streak, busiest repo, per-day bars.
