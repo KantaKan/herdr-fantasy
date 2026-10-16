@@ -59,7 +59,7 @@ UI colors: panel bg `d`, panel border `S`, text `w`, dim text `s`, XP bar `y`, s
 | **Ranger** | opencode | green cloak (`g`/`t`), bow, leaf on hood. |
 | **Cleric** | gemini | white/gold robe (`w`/`y`), round shield with a sun. |
 | **Bard** | any other | orange vest (`o`), feathered cap, lute. |
-| **Sahur Knight** (special, opt-in via `[classes]`) | — | a knight whose helmet is a wooden kentongan drum (the visor slit is the drum's slit), wood-grain `o`/`r` armor, `y` cut-top crest, a wooden `y` bat instead of a sword. Generated from the shared templates by `tools/gen_special.py`. Original design — not the "Tung Tung Tung Sahur" meme character. |
+| **Sahur Knight** (special, opt-in via `[classes]`) | — | its own body, not the shared template: a walking wooden kentongan drum (`o`/`r` log with grain and a `y` cut ring), a small `s`/`S` steel knight's cap with a red plume, big googly `w` eyes, a wide mouth that shouts on attacks, stick arms, stubby legs, and a thick wooden `y` bat — on the shoulder while walking, wound up / swung across / followed through on attacks, raised for victory. Every animation, the face and the portrait are drawn by `tools/gen_special.py`. Original design — not the "Tung Tung Tung Sahur" meme character. |
 
 Each class needs these animations (frames @ ms per frame):
 
