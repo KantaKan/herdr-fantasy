@@ -46,81 +46,131 @@ class Grid:
 
 def hero(bob=0, legs="stand", arms="hold", bat="upright", eyes="open", lift=0, cape=0):
     """One 16x16 frame of a proper knight: the HELMET is a wooden kentongan drum with a
-    visor slit and glowing eyes; steel armor, red cape, a big wooden bat.
+    visor slit and glowing eyes; steel armor, red cape, a big wooden bat. Light comes from
+    the top-left: every material gets a highlight and a shadow.
     `bob` drops the upper body 1 px, `lift` raises everything (jumps), `cape` flutters."""
     g = Grid(16, 16)
     dy = bob - lift
-    # --- red cape behind (left side), flutters while running
-    g.rect(3, 8 + dy, 4, 12 + dy - cape, "r")
-    g.set(2, 12 + dy - cape, "p")
-    g.set(3, 13 + dy - cape, "p")
-    # --- legs: steel greaves
-    ly = 12 - lift
-    if legs == "stand":
-        g.rect(5, ly, 6, ly + 3, "S")
-        g.rect(9, ly, 10, ly + 3, "S")
-    elif legs == "strideA":
-        g.rect(4, ly, 5, ly + 2, "S")
-        g.set(3, ly + 3, "S")
-        g.rect(10, ly, 11, ly + 2, "S")
-        g.set(12, ly + 3, "S")
-    elif legs == "strideB":
-        g.rect(6, ly, 7, ly + 3, "S")
-        g.rect(8, ly, 9, ly + 2, "S")
-    elif legs == "sit":
-        g.rect(5, 14, 12, 15, "S")
     sit = 2 if legs == "sit" else 0
-    # --- steel torso, pauldrons, wooden belt, a little gold emblem
-    ty = 8 + dy + sit
-    g.rect(5, ty, 10, ty + 3, "s")
-    g.rect(9, ty, 10, ty + 3, "S")
-    g.rect(4, ty, 4, ty + 1, "S")
-    g.rect(11, ty, 11, ty + 1, "S")
-    g.rect(5, ty + 3, 10, ty + 3, "o")
-    g.set(7, ty + 1, "y")
-    # --- the kentongan drum helmet: wooden cylinder, rim, visor slit, glowing eyes, plume
-    hy = 2 + dy + sit
+    ty = 8 + dy + sit                       # torso top
+    hy = 2 + dy + sit                       # helmet top
+    # --- red cape behind: folds (p) and a lighter edge (o); flutters while running
+    for y in range(ty, ty + 5 - cape):
+        g.set(3, y, "p" if y % 2 else "r")
+        g.set(4, y, "r")
+    g.set(2, ty + 4 - cape, "p")
+    g.set(3, ty + 5 - cape, "r")
+    # --- legs: steel greaves, a bright knee plate, dark boots
+    ly = 12 - lift
+
+    def leg(x, top, h):
+        g.rect(x, top, x + 1, top + h - 1, "S")
+        g.set(x, top + 1, "s")              # knee plate catches the light
+        g.rect(x, top + h - 1, x + 1, top + h - 1, "d")
+    if legs == "stand":
+        leg(5, ly, 4)
+        leg(9, ly, 4)
+    elif legs == "strideA":
+        leg(4, ly, 3)
+        g.set(3, ly + 3, "d")
+        leg(10, ly, 3)
+        g.set(12, ly + 3, "d")
+    elif legs == "strideB":
+        leg(6, ly, 4)
+        leg(8, ly, 3)
+    elif legs == "sit":
+        g.rect(5, 14, 12, 14, "S")
+        g.rect(5, 15, 12, 15, "d")
+        g.set(8, 14, "s")
+    # --- torso: steel plate with a shine, shadowed right side, sun emblem, belt + buckle
+    g.rect(5, ty, 10, ty + 2, "s")
+    g.rect(9, ty, 10, ty + 2, "S")
+    g.set(6, ty, "w")                       # shine
+    g.set(7, ty + 1, "y")                   # sun emblem
+    g.set(8, ty + 1, "o")
+    g.set(7, ty + 2, "o")
+    g.rect(5, ty + 3, 10, ty + 3, "o")      # leather belt
+    g.set(7, ty + 3, "y")                   # buckle
+    g.set(10, ty + 3, "r")
+    g.set(4, ty, "s")                       # pauldrons
+    g.set(4, ty + 1, "S")
+    g.set(11, ty, "S")
+    g.set(11, ty + 1, "d")
+    # --- the kentongan drum helmet
     g.rect(4, hy, 11, hy + 5, "o")
-    g.rect(10, hy, 11, hy + 5, "r")
-    g.rect(4, hy + 5, 11, hy + 5, "y")       # rim
-    g.rect(5, hy + 3, 10, hy + 3, "k")       # the drum slit = visor
-    if eyes == "open":
+    g.rect(5, hy, 10, hy, "y")              # cut top of the drum, lit
+    g.set(5, hy + 1, "y")                   # highlight strip on the lit side
+    g.set(5, hy + 4, "y")
+    g.rect(10, hy + 1, 11, hy + 4, "r")     # shadow side
+    g.rect(4, hy + 2, 11, hy + 2, "s")      # steel band (where the drum's rope goes)
+    g.rect(10, hy + 2, 11, hy + 2, "S")
+    g.rect(4, hy + 5, 11, hy + 5, "S")      # lower band
+    g.set(4, hy + 5, "s")
+    g.rect(5, hy + 3, 10, hy + 3, "k")      # the drum slit = visor
+    if eyes == "open":                      # two-tone glow
+        g.set(6, hy + 3, "o")
         g.set(7, hy + 3, "y")
         g.set(9, hy + 3, "y")
     elif eyes == "angry":
+        g.set(6, hy + 3, "p")
         g.set(7, hy + 3, "r")
         g.set(9, hy + 3, "r")
-    g.set(6, hy + 1, "r")                    # wood grain
-    g.set(8, hy + 2, "r")
-    g.rect(7, hy - 2, 8, hy - 1, "r")        # plume
-    g.set(6, hy - 2, "r")
-    # --- front arm and the bat
+    g.set(7, hy + 4, "r")                   # wood grain
+    g.set(8, hy + 1, "r")
+    # plume: highlight, body, and a tail sweeping back
+    g.rect(7, hy - 2, 8, hy - 1, "r")
+    g.set(7, hy - 2, "o")
+    g.set(6, hy - 1, "r")
+    g.set(5, hy - 1, "p")
+    # --- front arm (steel gauntlet) and the bat (wood with a grip band and a shine)
     ay = ty + 1
+
+    def gauntlet(x, y):
+        g.set(x, y, "s")
+        g.set(x + 1, y, "S")
     if arms == "hold":
-        g.rect(11, ay, 12, ay, "S")
+        gauntlet(11, ay)
     elif arms == "fwd":
-        g.rect(11, ay, 13, ay, "S")
+        gauntlet(11, ay)
+        g.set(13, ay, "S")
     elif arms == "up":
-        g.rect(11, ay - 2, 12, ay - 1, "S")
+        gauntlet(11, ay - 2)
+        g.set(11, ay - 1, "S")
     elif arms == "raise":
         g.rect(12, ay - 4, 12, ay - 1, "S")
+        g.set(12, ay - 4, "s")
     if bat == "upright":   # held like a sword at rest
         g.rect(13, ay - 6, 14, ay - 3, "y")
+        g.set(13, ay - 6, "w")
+        g.set(14, ay - 4, "o")
         g.rect(13, ay - 2, 13, ay + 1, "o")
+        g.set(13, ay, "r")                  # grip band
     elif bat == "windup":  # raised back over the helmet
-        g.rect(4, max(0, hy - 4), 12, max(0, hy - 3), "y")
+        g.rect(4, max(0, hy - 4), 11, max(0, hy - 3), "y")
+        g.set(4, max(0, hy - 4), "w")
+        g.set(7, max(0, hy - 3), "o")
         g.rect(12, max(0, hy - 3), 13, hy - 1, "o")
+        g.set(12, hy - 2, "r")
     elif bat == "swing":   # straight out, full reach
         g.rect(13, ay - 1, 15, ay, "y")
-        g.rect(12, ay, 12, ay, "o")
+        g.set(15, ay - 1, "w")
+        g.set(14, ay, "o")
+        g.set(12, ay, "r")
     elif bat == "low":     # follow-through
-        g.rect(13, ay + 1, 14, ay + 2, "o")
+        g.rect(13, ay + 1, 13, ay + 2, "o")
+        g.set(14, ay + 2, "r")
         g.rect(14, ay + 3, 15, ay + 4, "y")
-    elif bat == "high":    # victory: raised to the sky
+        g.set(15, ay + 4, "o")
+    elif bat == "high":    # raised to the sky
         g.rect(12, max(0, hy - 5), 13, ay - 3, "y")
+        g.set(12, max(0, hy - 5), "w")
+        g.set(13, ay - 4, "o")
         g.rect(12, ay - 2, 12, ay - 1, "o")
+        g.set(12, ay - 2, "r")
     elif bat == "ground":  # resting beside a sitting knight
         g.rect(12, 13, 15, 13, "y")
+        g.set(15, 13, "w")
+        g.set(12, 13, "r")
     g.outline()
     return g.rows()
 
@@ -153,38 +203,66 @@ ANIMS = {
 
 
 def face(blink=False, bob=0):
-    """8x8 for compact mode: the drum helmet with its slit and glowing eyes."""
+    """8x8 for compact mode: the drum helmet with its band, slit and glowing eyes."""
     g = Grid(8, 8)
     t = 2 + bob
     g.rect(1, t, 6, 6, "o")
-    g.rect(5, t, 6, 6, "r")
-    g.rect(1, 6, 6, 6, "y")
+    g.rect(2, t, 5, t, "y")
+    g.rect(5, t + 1, 6, 6, "r")
+    g.rect(1, 6, 6, 6, "S")
     g.rect(2, t + 2, 5, t + 2, "k")
     if not blink:
+        g.set(2, t + 2, "o")
         g.set(3, t + 2, "y")
-        g.set(4, t + 2, "y")
-    g.rect(3, t - 2, 4, t - 1, "r")
+        g.set(5, t + 2, "y")
+    g.set(3, t - 1, "r")
+    g.set(4, t - 1, "o")
+    g.set(2, t - 1, "p")
     g.outline()
     return g.rows()
 
 
 def portrait(talk):
-    """32x32 close-up: the drum helmet head-on, glowing eyes, steel collar, plume."""
+    """32x32 close-up: the drum helmet head-on — grain, rope bands with rivets, a deep
+    glowing visor slit, a flowing plume, a steel collar and the cape behind."""
     g = Grid(32, 32)
-    g.rect(3, 26, 28, 31, "s")               # steel shoulders
-    g.rect(22, 26, 28, 31, "S")
-    g.rect(6, 6, 25, 25, "o")                # drum helmet
-    g.rect(21, 6, 25, 25, "r")
-    for (x, y) in ((9, 9), (13, 11), (18, 20), (10, 21)):
-        g.rect(x, y, x + 2, y, "r")          # grain
-    g.rect(6, 23, 25, 25, "y")               # rim
-    g.rect(8, 14, 23, 17, "k")               # the slit / visor
-    g.rect(11, 15, 13, 16, "y")              # glowing eyes
-    g.rect(18, 15, 20, 16, "y")
+    g.rect(1, 27, 30, 31, "r")               # cape behind the shoulders
+    g.rect(1, 29, 3, 31, "p")
+    g.rect(28, 29, 30, 31, "p")
+    g.rect(4, 26, 27, 31, "s")               # steel collar / shoulders
+    g.rect(20, 26, 27, 31, "S")
+    g.rect(5, 26, 9, 26, "w")                # shine
+    for x in (8, 15, 23):
+        g.set(x, 29, "d")                    # rivets
+    g.rect(14, 28, 17, 30, "y")              # sun emblem
+    g.rect(15, 29, 16, 29, "o")
+    g.rect(6, 6, 25, 25, "o")                # the drum helmet
+    g.rect(7, 6, 24, 7, "y")                 # cut top, lit
+    g.rect(8, 8, 9, 22, "y")                 # highlight strip
+    g.rect(21, 8, 25, 25, "r")               # shadow side
+    g.rect(24, 9, 25, 24, "p")
+    for (x, y, n) in ((12, 9, 4), (16, 12, 3), (11, 21, 5), (17, 22, 3)):
+        g.rect(x, y, x + n, y, "r")          # wood grain
+    for y in (10, 23):                       # steel rope bands with rivets
+        g.rect(6, y, 25, y + 1, "s")
+        g.rect(21, y, 25, y + 1, "S")
+        for x in (9, 15, 21):
+            g.set(x, y, "w")
+    g.rect(8, 15, 23, 18, "k")               # the visor slit
+    g.rect(9, 16, 22, 17, "p")               # depth inside the slit
+    g.rect(11, 16, 13, 17, "o")              # glowing eyes: halo
+    g.rect(18, 16, 20, 17, "o")
+    g.set(12, 16, "y")
+    g.set(19, 16, "y")
+    g.set(12, 17, "w")
+    g.set(19, 17, "w")
     if talk:
         g.rect(13, 19, 18, 21, "k")          # the drum speaks through a lower slit
-    g.rect(14, 0, 17, 5, "r")                # plume
-    g.rect(12, 1, 13, 3, "r")
+        g.rect(14, 20, 17, 20, "p")
+    g.rect(14, 1, 17, 5, "r")                # plume
+    g.rect(14, 1, 15, 3, "o")                # plume highlight
+    g.rect(10, 2, 13, 4, "r")                # tail sweeping back
+    g.rect(7, 4, 9, 5, "p")
     g.outline()
     return g.rows()
 
