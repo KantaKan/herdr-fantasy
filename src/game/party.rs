@@ -3,11 +3,13 @@
 
 use std::collections::BTreeMap;
 
-use super::hero::{Class, Hero, Seat, Status};
+use super::boss;
+use super::hero::{Action, Class, Hero, Seat, Status};
 use super::moves;
 use super::persist::Store;
 use super::repo::Repo;
-use super::world::{Finished, World};
+use super::world::{Finished, GameEvent, World};
+use crate::config::Bosses;
 use crate::transcript::claude::Entry;
 
 /// What the herdr side tells us about one agent, already resolved to a repo.
@@ -164,44 +166,64 @@ pub struct Feed<'a> {
     pub new_chapter: bool,
 }
 
-pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>) {
-    let Some(h) = w.heroes.iter_mut().find(|h| {
+pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bosses) {
+    let Some(i) = w.heroes.iter().position(|h| {
         h.leaving_ms.is_none() && h.seat.as_ref().is_some_and(|s| s.pane_id == f.pane_id)
     }) else {
         return;
     };
-    if f.new_chapter {
+    let finish = |w: &mut World| {
+        let h = &mut w.heroes[i];
         if let Some(quest) = h.finish_quest() {
-            w.finished.push(Finished {
+            let done = Finished {
                 hero: h.name.clone(),
                 seat: h.seat.clone(),
                 quest,
-            });
+            };
+            w.finished.push(done);
+            w.save_now = true;
         }
+    };
+    if f.new_chapter {
+        finish(w);
+        let h = &mut w.heroes[i];
         h.title_from_prompt = false;
+        h.boss_tool = None;
         h.say("— New Run —".into(), 'y');
-        w.save_now = true;
     }
     for e in f.entries {
         match e {
             Entry::Prompt(p) => {
                 // A new prompt closes the previous quest; the next work starts a new one.
-                if !f.history
-                    && let Some(quest) = h.finish_quest()
-                {
-                    w.finished.push(Finished {
-                        hero: h.name.clone(),
-                        seat: h.seat.clone(),
-                        quest,
-                    });
-                    w.save_now = true;
+                if !f.history {
+                    finish(w);
                 }
+                let h = &mut w.heroes[i];
                 h.title = Some(prompt_title(p));
                 h.title_from_prompt = true;
             }
-            Entry::Tool { name, input, .. } if !f.history => {
+            Entry::Tool { id, name, input } if !f.history => {
+                let command = input["command"].as_str().unwrap_or("");
+                let boss = matches!(name.as_str(), "Bash" | "PowerShell")
+                    .then(|| boss::classify(command, bosses))
+                    .flatten();
+                if let Some(kind) = boss {
+                    w.apply(GameEvent::BossFight(i, kind, command.to_string()));
+                    w.heroes[i].boss_tool = Some(id.clone());
+                }
+                let boss_name = w.boss.as_ref().filter(|_| boss.is_some()).map(|b| b.name);
+                let h = &mut w.heroes[i];
                 if let Some(m) = moves::tool_move(name, input) {
-                    h.act(m.action, Some(m.detail));
+                    let detail = match boss_name {
+                        Some(b) => format!("fighting the {b}"),
+                        None => m.detail,
+                    };
+                    let action = if boss_name.is_some() {
+                        Action::Cast
+                    } else {
+                        m.action
+                    };
+                    h.act(action, Some(detail));
                     if let Some((text, color)) = m.float
                         && h.status == Status::Working
                     {
@@ -209,10 +231,17 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>) {
                     }
                 }
             }
+            Entry::ToolResult { id, is_error, text } if !f.history => {
+                if w.heroes[i].boss_tool.as_ref() == Some(id) {
+                    w.heroes[i].boss_tool = None;
+                    w.apply(GameEvent::BossResult(i, boss::failed(*is_error, text)));
+                }
+            }
             Entry::Usage { context, model } => {
-                h.context_used = Some(context_pct(*context, model.as_deref(), windows));
+                w.heroes[i].context_used = Some(context_pct(*context, model.as_deref(), windows));
             }
             Entry::Compact { post_tokens } => {
+                let h = &mut w.heroes[i];
                 if let Some(t) = post_tokens {
                     h.context_used = Some(context_pct(*t, None, windows));
                 }
@@ -384,7 +413,7 @@ mod tests {
     }
 
     fn fed(w: &mut World, entries: &[Entry], history: bool) {
-        let windows = crate::config::Config::default().context_window;
+        let cfg = crate::config::Config::default();
         feed(
             w,
             Feed {
@@ -393,7 +422,8 @@ mod tests {
                 history,
                 new_chapter: false,
             },
-            &windows,
+            &cfg.context_window,
+            &cfg.bosses,
         );
     }
 
@@ -492,6 +522,83 @@ mod tests {
         fed(&mut w, &[Entry::Prompt("next thing".into())], false);
         assert_eq!(w.finished.len(), 1);
         assert_eq!(w.finished[0].quest.result, "complete");
+    }
+
+    fn result(id: &str, is_error: bool) -> Entry {
+        Entry::ToolResult {
+            id: id.into(),
+            is_error,
+            text: String::new(),
+        }
+    }
+
+    #[test]
+    fn m5_cargo_test_fail_then_pass_from_the_transcript() {
+        let mut w = World::new("", "");
+        let mut s = store("boss");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        let run = |id: &str| Entry::Tool {
+            id: id.into(),
+            name: "Bash".into(),
+            input: serde_json::json!({"command": "cargo test 2>&1 | tail -5"}),
+        };
+        fed(&mut w, &[run("t1")], false);
+        let b = w.boss.as_ref().expect("Test boss summoned");
+        assert_eq!((b.kind, b.hp), (boss::BossKind::Test, 100));
+        fed(&mut w, &[result("other", true)], false);
+        assert_eq!(
+            w.boss.as_ref().unwrap().hp,
+            100,
+            "unrelated results don't count"
+        );
+        fed(&mut w, &[result("t1", true)], false);
+        assert_eq!(w.boss.as_ref().unwrap().hp, 75);
+        assert_eq!(
+            w.boss.as_ref().unwrap().state,
+            crate::game::world::BossState::Laugh
+        );
+        let xp = w.heroes[0].xp;
+        fed(&mut w, &[run("t2"), result("t2", false)], false);
+        assert_eq!(w.boss.as_ref().unwrap().hp, 0);
+        assert_eq!(w.heroes[0].xp - xp, boss::VICTORY_XP);
+    }
+
+    #[test]
+    fn a_pipe_cannot_hide_a_failing_test() {
+        let mut w = World::new("", "");
+        let mut s = store("pipe");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        let entries = [
+            Entry::Tool {
+                id: "t1".into(),
+                name: "Bash".into(),
+                input: serde_json::json!({"command": "cargo test 2>&1 | tail -3"}),
+            },
+            Entry::ToolResult {
+                id: "t1".into(),
+                is_error: false,
+                text: "test result: FAILED. 1 passed; 1 failed".into(),
+            },
+        ];
+        fed(&mut w, &entries, false);
+        assert_eq!(w.boss.as_ref().unwrap().hp, 75, "counted as a failure");
+        assert!(
+            w.heroes[0]
+                .detail
+                .as_deref()
+                .unwrap()
+                .starts_with("fighting the ")
+        );
     }
 
     #[test]

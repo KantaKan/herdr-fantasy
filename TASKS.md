@@ -66,10 +66,10 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 
 ## M5 — Bosses
 - [x] Boss roster, species pick, and size tiers in `game/boss.rs` (SPEC §6.3) — landed early, with 27 placeholder sprites.
-- [ ] `game/boss.rs` classifier (SPEC §6.3) with user rules from config. Unit tests for every built-in pattern.
-- [ ] Boss enter/battle/victory/laugh flow, cosmetic HP, first-try + persistence bonuses.
-- [ ] Verify that `is_error` marks failed Bash and PowerShell runs; update SPEC §6.3.
-  **Done when:** `cargo test` failing then passing in a Claude session shows Test Golem laughing, losing 25% HP, then dying with the right XP.
+- [x] `game/boss.rs` classifier (SPEC §6.3) with user rules from config. Unit tests for every built-in pattern.
+- [x] Boss enter/battle/victory/laugh flow, cosmetic HP, first-try + persistence bonuses.
+- [x] Verify that `is_error` marks failed Bash and PowerShell runs; update SPEC §6.3. (Yes — but a `| tail` pipe hides it, so failure markers in the output count too.)
+  **Done when:** `cargo test` failing then passing in a Claude session shows Test Golem laughing, losing 25% HP, then dying with the right XP. (2026-10-16, live in this repo: `cargo test --no-such-flag` → Snapshot Mimic at 75%; `cargo test game::boss` → defeated, +40 XP. The species is per command, so `cargo test` here summons the Mimic, not the Golem.)
 
 ## M6 — Stamina, rest, new runs
 - [ ] Stamina from the latest transcript usage entry (SPEC §7.4).

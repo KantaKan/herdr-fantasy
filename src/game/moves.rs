@@ -73,7 +73,7 @@ pub fn tool_move(name: &str, input: &Value) -> Option<Move> {
 }
 
 /// First real command of a shell line: skip `cd`, env assignments, `sudo`/`time`.
-fn commands(line: &str) -> Vec<Vec<String>> {
+pub fn commands(line: &str) -> Vec<Vec<String>> {
     line.split(['|', ';', '&'])
         .map(|seg| {
             seg.split_whitespace()

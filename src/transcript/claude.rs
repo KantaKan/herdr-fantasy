@@ -23,16 +23,13 @@ pub enum Entry {
     ToolResult {
         id: String,
         is_error: bool,
+        /// The start of the result text (up to 8 KB), to spot failures a pipe hid.
+        text: String,
     },
     /// Current context size in tokens, and the model that reported it.
-    Usage {
-        context: u64,
-        model: Option<String>,
-    },
+    Usage { context: u64, model: Option<String> },
     /// The conversation was compacted; new context size if known.
-    Compact {
-        post_tokens: Option<u64>,
-    },
+    Compact { post_tokens: Option<u64> },
 }
 
 pub fn parse(line: &str) -> Vec<Entry> {
@@ -60,6 +57,7 @@ pub fn parse(line: &str) -> Vec<Entry> {
                             Some("tool_result") => out.push(Entry::ToolResult {
                                 id: b["tool_use_id"].as_str().unwrap_or_default().to_string(),
                                 is_error: b["is_error"].as_bool().unwrap_or(false),
+                                text: result_text(&b["content"]),
                             }),
                             Some("text") => {
                                 let t = b["text"].as_str().unwrap_or_default();
@@ -104,6 +102,27 @@ pub fn parse(line: &str) -> Vec<Entry> {
         _ => {}
     }
     out
+}
+
+/// Tool result content is a string or a list of `{type:"text", text}` blocks.
+fn result_text(v: &Value) -> String {
+    let mut s = match v {
+        Value::String(s) => s.clone(),
+        Value::Array(parts) => parts
+            .iter()
+            .filter_map(|p| p["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    };
+    if s.len() > 8192 {
+        let mut cut = 8192;
+        while !s.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        s.truncate(cut);
+    }
+    s
 }
 
 /// Where Claude Code keeps a session's transcript, given herdr's `agent_session`:
@@ -169,14 +188,14 @@ mod tests {
                 "Agent"
             ]
         );
-        assert!(all.contains(&Entry::ToolResult {
-            id: "toolu_bash".into(),
-            is_error: true
-        }));
-        assert!(all.contains(&Entry::ToolResult {
-            id: "toolu_bash".into(),
-            is_error: false
-        }));
+        assert!(all.iter().any(|e| matches!(e, Entry::ToolResult { id, is_error: true, text } if id == "toolu_bash" && text.starts_with("Exit code"))));
+        assert!(all.iter().any(|e| matches!(
+            e,
+            Entry::ToolResult {
+                is_error: false,
+                ..
+            }
+        )));
         assert!(
             all.iter()
                 .any(|e| matches!(e, Entry::Usage { context, .. } if *context > 0))

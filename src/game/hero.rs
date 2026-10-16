@@ -277,6 +277,8 @@ pub struct Hero {
     combo: u32,
     /// The title came from a real prompt (beats herdr's terminal title).
     pub title_from_prompt: bool,
+    /// Tool call id of the boss command this hero is waiting on.
+    pub boss_tool: Option<String>,
 }
 
 impl Hero {
@@ -302,6 +304,7 @@ impl Hero {
             float: None,
             combo: 0,
             title_from_prompt: false,
+            boss_tool: None,
         }
     }
 

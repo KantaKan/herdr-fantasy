@@ -350,7 +350,9 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 
 - **Size tier** follows the command's scope: whole-repo flags (`--workspace`, `--all`, `--all-targets`, `--all-features`, `--recursive`, `-r`) → **Big**; a narrowed run (a token with `::` or `/`, a source file, or `-k` / `--test` / `-run` / `-t` / `--grep`) → **Little**; otherwise **Normal**. If the tier doesn't fit the scene height, it drops a tier.
 - The quest line shows the boss name + HP while a boss is present (instead of the quest timer).
-- Outcome: matching `tool_result` with `is_error = false` = victory, `is_error = true` = boss survives and laughs. ⚠️ verify that a non-zero exit sets `is_error` for both Bash and PowerShell; if not, parse the exit code from the result text.
+- Matching (`game/boss.rs`, table-tested): each `&&` / `;` / `|` segment of the command, after skipping `cd`, env assignments and `sudo`, is compared word-by-word against the rules (`cargo test` matches `cargo test --workspace`, not `cargo testy` or `echo cargo test`). User rules (test, build, lint) first, then built-ins; test rules beat a plain `make`. The built-in tables also cover `npm run test/build/lint`, `dotnet`, `mvn`, `gradle`, `mypy`, `flake8`, `rubocop`, `cargo fmt --check`.
+- Outcome: the matching `tool_result` (by `tool_use_id`). `is_error = true` (verified: non-zero exit) = boss survives and laughs. **Agents often pipe through `tail`/`head`, which hides the exit code**, so a result also counts as failed when its text shows `test result: FAILED`, `error[E`, `could not compile`, `npm ERR!`, `--- FAIL`, `FAILED (`, `panicked at`, … (`boss::failed`).
+- The same kind of boss stays up between attempts (failures add up, HP keeps dropping); a different kind replaces it. Victory XP goes to the hero who fought it, with a floating `+N XP first try!` / `persistence!`.
 - Boss HP is cosmetic: starts full; each failed attempt knocks off 25% (so persistence visibly pays off); victory always finishes it.
 - "First-try" = victory without a failure on the same boss type within the same quest.
 

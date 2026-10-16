@@ -114,6 +114,7 @@ fn drain(
                     new_chapter,
                 },
                 &cfg.context_window,
+                &cfg.bosses,
             ),
             Ok(Update::Lost) => w.banner = Some("reconnecting to herdr…".into()),
             Err(TryRecvError::Empty) => return visible,

@@ -90,20 +90,20 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         (0, E::Status(m, Status::Working)),
         (0, E::Status(r, Status::Idle)),
         (0, E::ContextUsed(k, Some(35))),
-        (8_000, E::BossEnter(BossKind::Test, String::new())),
+        (8_000, E::BossFight(k, BossKind::Test, String::new())),
         (8_000, E::Act(k, Action::Cast, test())),
-        (9_500, E::BossFail),
-        (9_500, E::Xp(k, 5)),
+        (9_500, E::BossResult(k, true)),
         (12_000, E::Status(m, Status::Blocked)),
+        (14_000, E::BossFight(k, BossKind::Test, String::new())),
         (14_000, E::Act(k, Action::Cast, test())),
-        (15_500, E::BossFail),
+        (15_500, E::BossResult(k, true)),
         (
             18_000,
             E::Act(k, Action::Attack, Some("editing src/auth.rs".into())),
         ),
+        (20_000, E::BossFight(k, BossKind::Test, String::new())),
         (20_000, E::Act(k, Action::Cast, test())),
-        (21_500, E::BossDefeat),
-        (21_500, E::Xp(k, 60)),
+        (21_500, E::BossResult(k, false)),
         (22_000, E::Status(m, Status::Working)),
         (24_000, E::Status(r, Status::Working)),
         (24_000, E::ContextUsed(k, Some(72))),
@@ -139,7 +139,7 @@ impl Demo {
             }
             let (kind, cmd) = BOSSES[self.loops % BOSSES.len()];
             let ev = match ev.clone() {
-                E::BossEnter(..) => E::BossEnter(kind, cmd.to_string()),
+                E::BossFight(i, ..) => E::BossFight(i, kind, cmd.to_string()),
                 E::Act(i, a, Some(d)) if d == BOSS_CMD => {
                     E::Act(i, a, Some(format!("running {cmd}")))
                 }

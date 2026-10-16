@@ -10,12 +10,10 @@ pub enum GameEvent {
     Act(usize, Action, Option<String>),
     /// The hero's current work title (names its quest).
     Title(usize, String),
-    /// A boss command started (kind from the classifier, the command text).
-    BossEnter(BossKind, String),
-    /// The boss command failed: boss laughs and loses 25% HP.
-    BossFail,
-    /// The boss command succeeded.
-    BossDefeat,
+    /// Hero `i` ran a boss command (kind from the classifier, the command text).
+    BossFight(usize, BossKind, String),
+    /// Hero `i`'s boss command finished; `true` = it failed.
+    BossResult(usize, bool),
     Xp(usize, u64),
     ContextUsed(usize, Option<u8>),
 }
@@ -29,6 +27,9 @@ pub enum BossState {
 
 #[derive(Debug, Clone)]
 pub struct Boss {
+    pub kind: BossKind,
+    /// Name of the hero fighting it (gets the XP).
+    pub owner: String,
     pub name: &'static str,
     /// Sprite id; sheets are `boss_<id>_<tier>`.
     pub id: &'static str,
@@ -46,9 +47,11 @@ const DYING_MS: u64 = 1200;
 pub const LEAVE_MS: u64 = 1500;
 
 impl Boss {
-    pub fn new(kind: BossKind, command: &str) -> Self {
+    pub fn new(kind: BossKind, command: &str, owner: &str) -> Self {
         let s = boss::species(kind, command);
         Boss {
+            kind,
+            owner: owner.to_string(),
             name: s.name,
             id: s.id,
             tier: boss::tier(command),
@@ -174,15 +177,39 @@ impl World {
                     h.title = Some(t);
                 }
             }
-            GameEvent::BossEnter(kind, cmd) => self.boss = Some(Boss::new(kind, &cmd)),
-            GameEvent::BossFail => {
-                if let Some(b) = &mut self.boss {
-                    b.fail();
+            GameEvent::BossFight(i, kind, cmd) => {
+                let Some(h) = self.heroes.get(i) else { return };
+                // The same kind of boss stays up between attempts, so failures add up
+                // and its HP drops; a different kind replaces it.
+                match &mut self.boss {
+                    Some(b) if b.kind == kind && b.state != BossState::Dying => {
+                        b.owner.clone_from(&h.name);
+                    }
+                    _ => self.boss = Some(Boss::new(kind, &cmd, &h.name)),
                 }
             }
-            GameEvent::BossDefeat => {
-                if let Some(b) = &mut self.boss {
+            GameEvent::BossResult(i, failed) => {
+                let Some(b) = self.boss.as_mut().filter(|b| b.state != BossState::Dying) else {
+                    return;
+                };
+                let Some(h) = self.heroes.get_mut(i) else {
+                    return;
+                };
+                if failed {
+                    b.fail();
+                    h.say(format!("{} laughs!", b.name), 'r');
+                } else {
+                    let xp = boss::victory_xp(b.fails);
+                    let bonus = match b.fails {
+                        0 => " first try!",
+                        1 => "",
+                        _ => " persistence!",
+                    };
                     b.defeat();
+                    h.say(format!("+{xp} XP{bonus}"), 'y');
+                    if h.gain_xp(xp) > 0 {
+                        self.save_now = true;
+                    }
                 }
             }
             GameEvent::Xp(i, n) => {
@@ -241,21 +268,70 @@ impl World {
 mod tests {
     use super::*;
 
+    fn fight(w: &mut World, i: usize, failed: bool) {
+        w.apply(GameEvent::BossFight(i, BossKind::Test, "cargo test".into()));
+        w.apply(GameEvent::BossResult(i, failed));
+    }
+
     #[test]
     fn boss_fails_never_kill_and_defeat_finishes() {
         let mut w = World::new("r", "t");
-        w.apply(GameEvent::BossEnter(BossKind::Test, "cargo test".into()));
+        let a = w.add_hero("A", Class::Knight);
         for _ in 0..5 {
-            w.apply(GameEvent::BossFail);
+            fight(&mut w, a, true);
         }
         let b = w.boss.as_ref().unwrap();
         assert_eq!((b.hp, b.fails, b.state), (25, 5, BossState::Laugh));
         w.update(LAUGH_MS);
         assert_eq!(w.boss.as_ref().unwrap().state, BossState::Idle);
-        w.apply(GameEvent::BossDefeat);
+        fight(&mut w, a, false);
         assert_eq!(w.boss.as_ref().unwrap().hp, 0);
         w.update(DYING_MS);
         assert!(w.boss.is_none());
+    }
+
+    #[test]
+    fn m5_fail_then_pass_pays_the_right_xp() {
+        // "cargo test failing then passing": laugh, -25% HP, then dies; 40 XP, no bonus.
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        fight(&mut w, a, true);
+        assert_eq!(w.boss.as_ref().unwrap().hp, 75);
+        assert_eq!(w.boss.as_ref().unwrap().state, BossState::Laugh);
+        fight(&mut w, a, false);
+        assert_eq!(w.heroes[a].xp, 40);
+        assert_eq!(w.heroes[a].float.as_ref().unwrap().0, "+40 XP");
+    }
+
+    #[test]
+    fn first_try_and_persistence_bonuses() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        fight(&mut w, a, false);
+        assert_eq!(w.heroes[a].xp, 70, "first try");
+        w.update(DYING_MS);
+        let before = (w.heroes[a].level, w.heroes[a].xp);
+        fight(&mut w, a, true);
+        fight(&mut w, a, true);
+        fight(&mut w, a, false);
+        let gained = crate::game::xp::xp_to_next(before.0) * (w.heroes[a].level - before.0) as u64
+            + w.heroes[a].xp
+            - before.1;
+        assert_eq!(gained, 60, "40 + persistence 20");
+    }
+
+    #[test]
+    fn a_different_kind_replaces_the_boss() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        fight(&mut w, a, true);
+        w.apply(GameEvent::BossFight(
+            a,
+            BossKind::Lint,
+            "cargo clippy".into(),
+        ));
+        let b = w.boss.as_ref().unwrap();
+        assert_eq!((b.kind, b.hp, b.fails), (BossKind::Lint, 100, 0));
     }
 
     #[test]
