@@ -51,6 +51,8 @@ pub struct Lifetime {
     pub force_pushes: u32,
     /// Unlocked badge ids (M12).
     pub badges: Vec<String>,
+    /// Today's daily quest (M13).
+    pub daily: super::daily::Daily,
 }
 
 impl Lifetime {

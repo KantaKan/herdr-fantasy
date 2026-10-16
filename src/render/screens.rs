@@ -225,6 +225,19 @@ pub fn character(w: &World, hero: Option<&Hero>, area: Rect, buf: &mut Buffer) {
         y += 1;
     }
     use crate::game::badges::{BADGES, by_id};
+    if l.daily.day > 0 {
+        y += 1;
+        let (name, n, target) = crate::game::daily::progress(l);
+        let x = put(buf, area, tx, y, "Daily", 'w', true);
+        let x = put(buf, area, x + 1, y, name, 's', false);
+        let (s, c) = if l.daily.done {
+            ("✓ done".to_string(), 'G')
+        } else {
+            (format!("{n}/{target}"), 'y')
+        };
+        put(buf, area, x + 1, y, &s, c, false);
+        y += 1;
+    }
     y += 1;
     let x = put(buf, area, tx, y, "Badges", 'w', true);
     put(

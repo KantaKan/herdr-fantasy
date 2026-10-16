@@ -96,6 +96,7 @@ pub fn run_demo(
             |w, real_ms| {
                 let ms = real_ms * speed + carry;
                 carry = ms.fract();
+                w.today = today();
                 demo.advance(ms as u64, w);
                 w.drain_finished();
                 true
@@ -106,6 +107,14 @@ pub fn run_demo(
         println!("{}", b.report(started.elapsed()));
     }
     result
+}
+
+/// Days since 1970 (UTC) for the daily quest.
+fn today() -> u32 {
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64);
+    crate::game::daily::day_of(ms)
 }
 
 /// The real stage: party from herdr, progress saved per repo.
@@ -140,6 +149,7 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
                     });
                 }
             }
+            w.today = today();
             w.update(real_ms as u64);
             persist(w, &mut store, &mut last_save, config.store_prompt_text);
             visible

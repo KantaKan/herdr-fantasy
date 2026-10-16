@@ -1,5 +1,6 @@
 pub mod badges;
 pub mod boss;
+pub mod daily;
 pub mod demo;
 pub mod duck;
 pub mod hero;

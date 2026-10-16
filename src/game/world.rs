@@ -7,7 +7,7 @@ use super::boss::{self, BossKind, Tier};
 use super::duck::{self, Quip};
 use super::hero::{Action, Class, Hero, QuestDone, Seat, Status};
 use super::town::Town;
-use super::{badges, loot};
+use super::{badges, daily, loot};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameEvent {
@@ -46,8 +46,8 @@ pub enum BossState {
 #[derive(Debug, Clone)]
 pub struct Boss {
     pub kind: BossKind,
-    /// Name of the hero fighting it (gets the XP).
-    pub owner: String,
+    /// Heroes in this fight, first one first. Two or more = a team fight (M13).
+    pub fighters: Vec<String>,
     pub name: &'static str,
     /// Sprite id; sheets are `boss_<id>_<tier>`.
     pub id: &'static str,
@@ -70,11 +70,11 @@ const DYING_MS: u64 = 1200;
 pub const LEAVE_MS: u64 = 1500;
 
 impl Boss {
-    pub fn new(kind: BossKind, command: &str, owner: &str) -> Self {
+    pub fn new(kind: BossKind, command: &str, hero: &str) -> Self {
         let s = boss::species(kind, command);
         Boss {
             kind,
-            owner: owner.to_string(),
+            fighters: vec![hero.to_string()],
             name: s.name,
             id: s.id,
             tier: boss::tier(command),
@@ -207,6 +207,8 @@ pub struct World {
     pub duck: super::duck::Duck,
     /// Config `memes`: Quips on/off.
     pub memes: bool,
+    /// Today as days since 1970 (UTC), set by the frame loop; 0 = no daily quests.
+    pub today: u32,
 }
 
 impl World {
@@ -230,6 +232,7 @@ impl World {
             logs_loaded: HashSet::new(),
             duck: Default::default(),
             memes: true,
+            today: 0,
         }
     }
 
@@ -288,12 +291,18 @@ impl World {
                 }
             }
             GameEvent::BossFight(i, kind, cmd) => {
-                let Some(h) = self.heroes.get(i) else { return };
+                let Some(h) = self.heroes.get_mut(i) else {
+                    return;
+                };
                 // The same kind of boss stays up between attempts, so failures add up
-                // and its HP drops; a different kind replaces it.
+                // and its HP drops; a different kind replaces it. Another hero running
+                // the same kind joins the fight.
                 match &mut self.boss {
                     Some(b) if b.kind == kind && b.state != BossState::Dying => {
-                        b.owner.clone_from(&h.name);
+                        if !b.fighters.contains(&h.name) {
+                            b.fighters.push(h.name.clone());
+                            h.say("joins the fight!".into(), 'c');
+                        }
                     }
                     _ => self.boss = Some(Boss::new(kind, &cmd, &h.name)),
                 }
@@ -319,8 +328,13 @@ impl World {
                     }
                     h.say(format!("{} laughs!", b.name), 'r');
                 } else {
-                    let xp = boss::victory_xp(b.fails);
+                    let team: Vec<String> = b.fighters.clone();
+                    let combo = team.len() >= 2;
+                    // A team win pays everyone in the fight, plus half again.
+                    let base = boss::victory_xp(b.fails);
+                    let xp = if combo { base * 3 / 2 } else { base };
                     let bonus = match b.fails {
+                        _ if combo => " team attack!",
                         0 => " first try!",
                         1 => "",
                         _ => " persistence!",
@@ -350,6 +364,27 @@ impl World {
                     h.say(format!("+{xp} XP{bonus}"), 'y');
                     if h.gain_xp(xp) > 0 {
                         self.save_now = true;
+                    }
+                    if combo {
+                        tracing::info!("team attack: {}", team.join(" + "));
+                        let text = format!("⚔ Team attack! {}", team.join(" + "));
+                        announce(&mut self.headline, &mut self.headlines, text);
+                        for (k, o) in self.heroes.iter_mut().enumerate() {
+                            if k == i || !team.contains(&o.name) {
+                                continue;
+                            }
+                            o.life.bosses_won += 1;
+                            o.life.streak += 1;
+                            o.life.best_streak = o.life.best_streak.max(o.life.streak);
+                            o.act(Action::Attack, None);
+                            o.say(format!("+{xp} XP team attack!"), 'y');
+                            if o.gain_xp(xp) > 0 {
+                                self.save_now = true;
+                            }
+                        }
+                        if let Some(h) = self.heroes.get_mut(i) {
+                            h.act(Action::Attack, None);
+                        }
                     }
                 }
             }
@@ -422,6 +457,18 @@ impl World {
             }
         }
         for h in &mut self.heroes {
+            if self.today > 0 && daily::tick(&mut h.life, &h.name, self.today) {
+                let (name, ..) = daily::progress(&h.life);
+                tracing::info!("{} finished the daily quest: {name}", h.name);
+                h.gain_xp(daily::REWARD_XP);
+                let text = format!(
+                    "📜 {} — daily quest done: {name}! +{} XP",
+                    h.name,
+                    daily::REWARD_XP
+                );
+                announce(&mut self.headline, &mut self.headlines, text);
+                self.save_now = true;
+            }
             let earned = badges::newly_earned(&h.life, h.level);
             let Some(last) = earned.last() else { continue };
             tracing::info!("{} earned {}", h.name, last.name);
@@ -743,6 +790,64 @@ mod tests {
         fight(&mut w, a, false);
         w.update(1);
         assert!(w.heroes[a].life.badges.contains(&"never_give_up".into()));
+    }
+
+    #[test]
+    fn a_second_hero_joins_the_fight_and_both_get_team_xp() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        let b = w.add_hero("B", Class::Mage);
+        w.apply(GameEvent::BossFight(a, BossKind::Test, "cargo test".into()));
+        w.apply(GameEvent::BossFight(b, BossKind::Test, "cargo test".into()));
+        assert_eq!(w.boss.as_ref().unwrap().fighters, ["A", "B"]);
+        assert_eq!(w.heroes[b].float.as_ref().unwrap().0, "joins the fight!");
+        w.apply(GameEvent::BossResult(b, false));
+        let team = boss::victory_xp(0) * 3 / 2;
+        for i in [a, b] {
+            let h = &w.heroes[i];
+            assert_eq!(h.life.bosses_won, 1);
+            assert_eq!(
+                h.float.as_ref().unwrap().0,
+                format!("+{team} XP team attack!")
+            );
+        }
+        let shown: Vec<_> = w
+            .headline
+            .iter()
+            .map(|h| h.0.clone())
+            .chain(w.headlines.clone())
+            .collect();
+        assert!(
+            shown.iter().any(|t| t == "⚔ Team attack! A + B"),
+            "{shown:?}"
+        );
+    }
+
+    #[test]
+    fn daily_quest_pays_once() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.today = 20_000;
+        w.update(1);
+        let (_, _, target) = daily::progress(&w.heroes[a].life);
+        let l = &mut w.heroes[a].life;
+        for _ in 0..target {
+            match l.daily.kind {
+                0 => l.bosses_won += 1,
+                1 => l.quests += 1,
+                2 => l.shadows += 1,
+                3 => l.edits += 1,
+                4 => l.reads += 1,
+                _ => l.shells += 1,
+            }
+        }
+        let xp = w.heroes[a].xp;
+        w.update(1);
+        assert!(w.heroes[a].life.daily.done);
+        assert!(w.heroes[a].xp > xp || w.heroes[a].level > 1);
+        let xp = (w.heroes[a].level, w.heroes[a].xp);
+        w.update(1);
+        assert_eq!((w.heroes[a].level, w.heroes[a].xp), xp, "paid once");
     }
 
     #[test]

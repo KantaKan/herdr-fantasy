@@ -124,9 +124,9 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** reaching a badge's condition shows the banner once, and it stays unlocked after a restart. (2026-10-16: `badges_unlock_once_and_queue_behind_the_loot_banner`; demo shows the loot banner, then "🏆 Claude: First Blood!". Badges are saved with the rest of `Lifetime`, covered by the persist round trip. Night Owl was dropped: no local-time source without a new dependency.)
 
 ## M13 — Party combos + daily quest
-- [ ] A second hero running a boss command while a boss is up **joins the fight**: team attack animation, both get the victory XP plus a combo bonus.
-- [ ] Daily quest per hero, rolled from the UTC date ("Win 5 boss fights", "Finish 3 quests", "Raise 2 shadows" …): progress on the character sheet, bonus XP when done.
-  **Done when:** two heroes beating one boss both get XP with the combo float; a daily quest completes and pays once per day.
+- [x] A second hero running a boss command while a boss is up **joins the fight**: team attack animation, both get the victory XP plus a combo bonus.
+- [x] Daily quest per hero, rolled from the UTC date ("Win 5 boss fights", "Finish 3 quests", "Raise 2 shadows" …): progress on the character sheet, bonus XP when done.
+  **Done when:** two heroes beating one boss both get XP with the combo float; a daily quest completes and pays once per day. (2026-10-16: `a_second_hero_joins_the_fight_and_both_get_team_xp`, `daily_quest_pays_once`, `completes_once_and_rolls_over_each_day`.)
 
 ## M14 — Pets + hero skins
 - [ ] Pets (`[pets] claude = "cat"`; cat, dog, dragon, owl): a small sprite that follows its hero, hops when it hops, sits at camp; grows up at Lv 5 and Lv 15.

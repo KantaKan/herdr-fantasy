@@ -449,6 +449,11 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
 - Headline banners queue: one shows for 3 s, then the next. The banner is drawn last, over the scene.
 - Character sheet: badge count, unlocked names, and the next one to earn with its hint.
 
+### 7.7 Team fights and daily quests (M13)
+- While a boss is up, another hero running a command of the same boss kind **joins the fight** ("joins the fight!" float). The boss lists its fighters.
+- A team win pays every fighter the victory XP × 1.5, counts as a win for each (streaks too), plays an attack on each, and shows "⚔ Team attack! A + B". Loot and first-try credit go to the hero whose command won.
+- Daily quest (`game/daily.rs`): one per hero per UTC day, rolled from the hero name and the date: win 3 boss fights, finish 3 quests, raise 2 shadows, make 20 edits, read or search 30 times, or run 15 shell commands. Progress counts from the counter value at the start of the day; completing it pays +50 XP once and shows "📜 <hero> — daily quest done". Saved in `party.json` (`daily`); shown on the character sheet. The day turns over at UTC midnight (no timezone dependency).
+
 ### 7.4 Stamina (context window) — "what happens when context is full"
 - `STA% = 100 - context_pct`, where `context_pct = current_context_tokens / context_window_size`.
 - `context_window_size`: config map by model id, default 200,000; if usage exceeds the configured size, grow the assumed size to the next known tier (200k → 1M) instead of showing > 100%.
