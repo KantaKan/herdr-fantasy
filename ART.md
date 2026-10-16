@@ -60,6 +60,7 @@ UI colors: panel bg `d`, panel border `S`, text `w`, dim text `s`, XP bar `y`, s
 | **Cleric** | gemini | white/gold robe (`w`/`y`), round shield with a sun. |
 | **Bard** | any other | orange vest (`o`), feathered cap, lute. |
 | **Sahur Knight** (special, opt-in via `[classes]`) | — | its own body, not the shared template: a proper knight whose **helmet is a wooden kentongan drum** (`o`/`r` with grain, `y` rim, the drum slit is the visor with glowing `y` eyes — `r` when angry), red plume, `s`/`S` steel chest with a gold emblem and wooden belt, red cape that flutters when running, steel legs, and a big wooden `y` bat: upright at rest, wound up / swung across / followed through on attacks, raised high for spells and victory. Face and portrait are the drum helmet head-on. Drawn by `tools/gen_special.py`. Original design — not the "Tung Tung Tung Sahur" meme character. |
+| **Wild Card** (special, opt-in) | — | an original harlequin trickster — the joker of a card deck, not any comic character: two-pointed `r`/`y` jester hat with bouncing bells, white `w`/`s` mask with a blue diamond tear and a sly `r` grin, ruffled collar, `r`/`y` diamond motley with pom-pom buttons, one red and one yellow leg, curly pointed shoes. Holds a fan of cards; attacks wind up and flick a card; juggles three balls for spells; bows, then jumps for victory; sits cross-legged at camp. Deliberately avoids the DC Joker's trademarks (green hair, purple suit, scarred smile). |
 
 Each class needs these animations (frames @ ms per frame):
 

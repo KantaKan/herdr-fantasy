@@ -332,7 +332,7 @@ Key = SHA-256 of the identity string, first 16 hex chars. Cache per cwd for the 
 
 ### 6.2 Hero identity and class
 - Hero key = `(repo_key, agent_kind, slot)`. `slot` = 0-based order among live agents of the same kind in the same repo, assigned when the agent appears and freed when it leaves. Reappearing agents take the lowest free slot.
-- Default classes (configurable): `claude → Knight`, `codex → Mage`, `cursor → Rogue`, `opencode → Ranger`, `gemini → Cleric`, anything else → `Bard`. Special classes can be chosen in `[classes]` too: `"Sahur Knight"` (ART.md §4).
+- Default classes (configurable): `claude → Knight`, `codex → Mage`, `cursor → Rogue`, `opencode → Ranger`, `gemini → Cleric`, anything else → `Bard`. Special classes can be chosen in `[classes]` too: `"Sahur Knight"`, `"Wild Card"` (ART.md §4).
 - Display name = herdr agent label (e.g. "Claude"), plus ` II`, ` III` for slots > 0.
 
 ### 6.3 Bosses

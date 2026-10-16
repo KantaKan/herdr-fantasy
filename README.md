@@ -71,7 +71,7 @@ reduced_motion = false          # no dashes, hops, shakes, flashes or fades
 store_prompt_text = true        # false: the quest log keeps only a hash of your prompts
 
 [classes]                       # agent kind → Knight, Mage, Rogue, Ranger, Cleric, Bard,
-claude = "Sahur Knight"         #   or the special Sahur Knight
+claude = "Sahur Knight"         #   or the specials "Sahur Knight" / "Wild Card"
 ```
 
 `herdr-fantasy doctor` prints what it detected (socket, config, renderer).

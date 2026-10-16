@@ -139,6 +139,7 @@ mod tests {
             "cleric",
             "bard",
             "sahur_knight",
+            "wild_card",
         ] {
             let s = sheet(&format!("hero_{class}"));
             assert_eq!((s.frames[0].w, s.frames[0].h), (16, 16));
