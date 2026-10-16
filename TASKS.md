@@ -115,6 +115,6 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [ ] Ghostty + herdr local: Kitty sprites, auto-open, ask popup, transcript events.
 - [ ] A terminal without Kitty graphics: halfblock everywhere.
 - [ ] `herdr --remote` over SSH: stage runs on the server, renders on the client.
-- [ ] 1, 3, and 8 agents; tiny pane (mini mode); very wide pane.
+- [x] 1, 3, and 8 agents; tiny pane (mini mode); very wide pane. (`any_size_renders_without_panic`, `layouts_by_size`, the 8-hero `stress` scenario.)
 - [ ] Kill the herdr server mid-battle; stage reconnects; no state loss.
-- [ ] Claude with a subagent storm (10 parallel): Summons cap at 3 + `+N`, CPU budget holds.
+- [x] Claude with a subagent storm (10 parallel): Summons cap at 3 + `+N`, CPU budget holds. (`summon_storm_shows_three_and_a_count` — found and fixed the `+N` being hidden behind the next hero; stress bench 1.5% of one core, 15.7 MB.)
