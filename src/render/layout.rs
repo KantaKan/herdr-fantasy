@@ -676,12 +676,18 @@ fn summons(w: &World, h: &Hero, scene: Rect, buf: &mut Buffer, x: i32) {
 fn pet(w: &World, h: &Hero, scene: Rect, buf: &mut Buffer, x: i32, hop: i32, flip: bool) {
     let Some(id) = &h.pet else { return };
     let stage = if h.level >= 10 { "grown" } else { "baby" };
-    let tag = match h.anim() {
-        Anim::Walk => "walk",
-        Anim::Sit => "sit",
-        _ => "idle",
+    // Its trick (fire, stretch, bark, flap) when the hero fights, and now and then on
+    // its own; the offset keeps two pets from doing it in sync.
+    const TRICK_MS: u64 = 600;
+    let own = (w.clock_ms + h.name.len() as u64 * 2_300) % 7_000;
+    let (tag, ms) = match h.anim() {
+        Anim::Walk => ("walk", w.clock_ms),
+        Anim::Sit => ("sit", w.clock_ms),
+        Anim::Attack | Anim::Cast | Anim::Victory => ("trick", h.anim_ms),
+        _ if own < TRICK_MS => ("trick", own),
+        _ => ("idle", w.clock_ms),
     };
-    let f = sheet(&format!("pet_{id}_{stage}")).frame(tag, w.clock_ms);
+    let f = sheet(&format!("pet_{id}_{stage}")).frame(tag, ms);
     halfblock::draw(buf, scene, f, x, stand_y(scene, f.h) + hop, flip);
 }
 
