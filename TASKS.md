@@ -53,7 +53,8 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [x] `open-ask` action opens the popup for the most recently blocked hero.
 - [x] README section: keybinding snippet `prefix+a` → `kantakan.herdr-fantasy.open-ask`.
 - [x] Agent blocks on a permission prompt → `❗ needs you`; the ask popup shows the hero portrait and the real question, `Go` focuses the agent, `Esc` closes; a new workspace gets exactly one stage from `workspace.created`. (Verified live 2026-10-16.) herdr itself reports `done`, not `blocked`, for an `AskUserQuestion` prompt, and flickers to `working` while a permission prompt is still open — herdr's detection, not ours.
-- [ ] **Manual check left for KantaKan** (#8): restart herdr — stage in every workspace exactly once; see the toast. (Can't restart the server from inside it; nested herdr is disabled.)
+- [x] Restart herdr: autostart puts exactly one stage in each of 4 workspaces, all on the new binary (verified 2026-10-16 after KantaKan's `herdr server stop`).
+- [ ] **Manual check left for KantaKan** (#8): see one "needs you" toast when an agent blocks (herdr can't list notifications, so only a human can confirm it).
   **Done when:** opening herdr shows the stage automatically in every workspace; a blocked agent shows ❗ + one toast; `prefix+a` opens the dialogue and Go focuses that pane; `Esc` always closes.
 
 ## M4 — Claude transcript reader (rich events) — ADR-0001
