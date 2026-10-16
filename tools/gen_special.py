@@ -272,26 +272,28 @@ def wild(bob=0, legs="stand", arms="down", card="none", eyes="open", mouth="grin
     g.set(8, ty + 2, "w")
     for x in range(4, 12):                   # ruffle: zigzag white/steel
         g.set(x, ty - 1, "w" if x % 2 else "s")
-    # --- the mask
+    # --- the mask, facing right: features toward the front, a pointed nose, the
+    # shadowed side at the back
     g.rect(5, hy, 10, hy + 3, "w")
-    g.rect(9, hy, 10, hy + 3, "s")           # shadow side
+    g.rect(5, hy + 1, 5, hy + 3, "s")        # back of the head in shadow
+    g.set(11, hy + 1, "w")                   # pointed nose
     if eyes == "open":
-        g.set(6, hy + 1, "k")
-        g.set(9, hy + 1, "k")
+        g.set(7, hy + 1, "k")
+        g.set(10, hy + 1, "k")
     elif eyes == "wink":
-        g.set(6, hy + 1, "k")
-        g.line([(8, hy + 1), (9, hy + 1)], "k")
+        g.set(7, hy + 1, "k")
+        g.line([(9, hy + 1), (10, hy + 1)], "k")
     elif eyes == "closed":
-        g.line([(6, hy + 1), (8, hy + 1), (9, hy + 1)], "k")
+        g.line([(7, hy + 1), (9, hy + 1), (10, hy + 1)], "k")
     elif eyes == "glint":
-        g.set(6, hy + 1, "k")
-        g.set(9, hy + 1, "C")
-    g.set(6, hy + 2, "b")                    # the diamond tear
+        g.set(7, hy + 1, "k")
+        g.set(10, hy + 1, "C")
+    g.set(7, hy + 2, "b")                    # the diamond tear
     if mouth == "grin":
-        g.line([(6, hy + 3), (7, hy + 3), (8, hy + 3), (9, hy + 2)], "r")
+        g.line([(8, hy + 3), (9, hy + 3), (10, hy + 3), (11, hy + 2)], "r")
     elif mouth == "laugh":
-        g.rect(6, hy + 3, 9, hy + 3, "k")
-        g.set(7, hy + 3, "r")
+        g.rect(8, hy + 3, 10, hy + 3, "k")
+        g.set(9, hy + 3, "r")
     # --- two-pointed jester hat with bells (they bounce)
     g.rect(5, hy - 1, 10, hy - 1, "k")       # band
     g.rect(4, hy - 2, 6, hy - 2, "r")
@@ -369,12 +371,13 @@ WILD = {
 def wild_face(wink=False, bob=0):
     g = Grid(8, 8)
     t = 3 + bob
-    g.rect(2, t, 5, 6, "w")
-    g.rect(5, t, 5, 6, "s")
-    g.set(2, t + 1, "k")
-    g.set(4, t + 1, "k" if not wink else "w")
-    g.set(2, t + 2, "b")
-    g.rect(2, t + 3, 4, t + 3, "r")
+    g.rect(2, t, 6, 6, "w")
+    g.rect(2, t + 1, 2, 6, "s")              # back of the head
+    g.set(3, t + 1, "k")
+    g.set(5, t + 1, "k" if not wink else "w")
+    g.set(7, t + 1, "w")                     # nose
+    g.set(3, t + 2, "b")
+    g.rect(4, t + 3, 6, t + 3, "r")
     g.rect(1, t - 1, 2, t - 1, "r")          # hat points
     g.rect(5, t - 1, 6, t - 1, "y")
     g.set(0, t - 2, "y")
