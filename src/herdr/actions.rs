@@ -191,7 +191,13 @@ pub fn toggle_stage() -> anyhow::Result<()> {
     let ws = context_workspace(&snap).ok_or_else(|| anyhow::anyhow!("no workspace"))?;
     match stage_pane(&snap, &ws) {
         Some(p) => {
-            c.request("plugin.pane.close", json!({ "pane_id": p.pane_id }))?;
+            // A stage opened by an earlier install (link -> GitHub) is no longer this
+            // plugin's pane, so plugin.pane.close refuses it; close it as a plain pane.
+            if c.request("plugin.pane.close", json!({ "pane_id": p.pane_id }))
+                .is_err()
+            {
+                c.request("pane.close", json!({ "pane_id": p.pane_id }))?;
+            }
         }
         None => open_stage(&mut c, &plan_stage(&snap, &ws).map_err(anyhow::Error::msg)?)?,
     }
