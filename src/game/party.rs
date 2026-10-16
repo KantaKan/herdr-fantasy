@@ -35,9 +35,11 @@ fn roman(n: usize) -> String {
 /// Save one hero's level and XP (keeps its lifetime counters).
 pub fn save_hero(h: &Hero, store: &mut Store) {
     if let Some(seat) = &h.seat {
-        let mut p = store.get(&seat.repo.key, &seat.key());
-        p.level = h.level;
-        p.xp = h.xp;
+        let p = super::persist::Progress {
+            level: h.level,
+            xp: h.xp,
+            life: h.life.clone(),
+        };
         store.put(&seat.repo.key, &seat.key(), p);
     }
 }
@@ -101,6 +103,7 @@ pub fn sync(
                 );
                 hero.level = p.level.max(1);
                 hero.xp = p.xp;
+                hero.life = p.life;
                 hero.seat = Some(seat);
                 w.heroes.push(hero);
                 w.heroes.last_mut().unwrap()
@@ -185,11 +188,7 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
         }
     };
     if f.new_chapter {
-        finish(w);
-        let h = &mut w.heroes[i];
-        h.title_from_prompt = false;
-        h.boss_tool = None;
-        h.say("— New Run —".into(), 'y');
+        w.apply(GameEvent::NewRun(i));
     }
     for e in f.entries {
         match e {
@@ -210,6 +209,13 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
                 if let Some(kind) = boss {
                     w.apply(GameEvent::BossFight(i, kind, command.to_string()));
                     w.heroes[i].boss_tool = Some(id.clone());
+                }
+                let life = &mut w.heroes[i].life;
+                match name.as_str() {
+                    "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => life.edits += 1,
+                    "Read" | "Grep" | "Glob" | "LS" | "WebSearch" | "WebFetch" => life.reads += 1,
+                    "Bash" | "PowerShell" => life.shells += 1,
+                    _ => {}
                 }
                 let boss_name = w.boss.as_ref().filter(|_| boss.is_some()).map(|b| b.name);
                 let h = &mut w.heroes[i];
@@ -237,17 +243,29 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
                     w.apply(GameEvent::BossResult(i, boss::failed(*is_error, text)));
                 }
             }
-            Entry::Usage { context, model } => {
-                w.heroes[i].context_used = Some(context_pct(*context, model.as_deref(), windows));
-            }
-            Entry::Compact { post_tokens } => {
+            Entry::Usage {
+                context,
+                output,
+                model,
+                message,
+            } => {
                 let h = &mut w.heroes[i];
-                if let Some(t) = post_tokens {
-                    h.context_used = Some(context_pct(*t, None, windows));
+                h.context_used = Some(context_pct(*context, model.as_deref(), windows));
+                if f.history {
+                    // Learn the baseline only; history never earns XP.
+                    h.usage(*context, 0, None);
+                } else {
+                    h.usage(*context, *output, message.as_deref());
                 }
-                if !f.history {
-                    h.say("Well rested!".into(), 'C');
-                }
+            }
+            Entry::Compact { post_tokens } if !f.history => {
+                let pct = post_tokens.map(|t| context_pct(t, None, windows));
+                w.apply(GameEvent::Rest(i, pct));
+            }
+            Entry::Compact {
+                post_tokens: Some(t),
+            } => {
+                w.heroes[i].context_used = Some(context_pct(*t, None, windows));
             }
             _ => {}
         }
@@ -257,7 +275,6 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::persist::Progress;
 
     fn store(name: &str) -> Store {
         let d = std::env::temp_dir().join(format!("hf-party-{name}-{}", std::process::id()));
@@ -342,14 +359,8 @@ mod tests {
             slot: 0,
         }
         .key();
-        assert_eq!(
-            s.get(&a.repo.key, &key),
-            Progress {
-                level: 7,
-                xp: 42,
-                quests: 0
-            }
-        );
+        let p = s.get(&a.repo.key, &key);
+        assert_eq!((p.level, p.xp), (7, 42));
         assert!(w.save_now);
 
         let mut fresh = World::new("", "");
@@ -451,7 +462,9 @@ mod tests {
                 Entry::Prompt("fix the login redirect bug\nit loops".into()),
                 Entry::Usage {
                     context: 100_000,
+                    output: 0,
                     model: None,
+                    message: None,
                 },
                 tool(
                     "Edit",
@@ -494,7 +507,9 @@ mod tests {
                 tool("Read", serde_json::json!({"file_path": "a.rs"})),
                 Entry::Usage {
                     context: 20_000,
+                    output: 0,
                     model: None,
+                    message: None,
                 },
             ],
             true,
@@ -598,6 +613,77 @@ mod tests {
                 .as_deref()
                 .unwrap()
                 .starts_with("fighting the ")
+        );
+    }
+
+    #[test]
+    fn m6_compaction_rests_and_clear_keeps_level() {
+        let mut w = World::new("", "");
+        let mut s = store("m6");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        w.heroes[0].level = 5;
+        w.heroes[0].context_used = Some(95);
+        fed(
+            &mut w,
+            &[Entry::Compact {
+                post_tokens: Some(20_000),
+            }],
+            false,
+        );
+        let h = &w.heroes[0];
+        assert_eq!(h.anim(), crate::game::hero::Anim::Sit, "rest scene");
+        assert_eq!(h.context_used, Some(10), "STA refilled");
+        let cfg = crate::config::Config::default();
+        feed(
+            &mut w,
+            Feed {
+                pane_id: "p1",
+                entries: &[],
+                history: true,
+                new_chapter: true,
+            },
+            &cfg.context_window,
+            &cfg.bosses,
+        );
+        assert_eq!(w.heroes[0].level, 5, "level kept");
+        assert_eq!(w.heroes[0].life.chapters, 1);
+        assert!(w.chapter_banner.is_some());
+    }
+
+    #[test]
+    fn lifetime_counters_survive_a_restart() {
+        let mut w = World::new("", "");
+        let mut s = store("life");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        fed(
+            &mut w,
+            &[
+                tool("Edit", serde_json::json!({"new_string": "x"})),
+                tool("Grep", serde_json::json!({})),
+            ],
+            false,
+        );
+        save_hero(&w.heroes[0], &mut s);
+        let mut fresh = World::new("", "");
+        sync(
+            &mut fresh,
+            &[agent("p7", "claude", Status::Idle)],
+            &classes(),
+            &mut s,
+        );
+        assert_eq!(
+            (fresh.heroes[0].life.edits, fresh.heroes[0].life.reads),
+            (1, 1)
         );
     }
 

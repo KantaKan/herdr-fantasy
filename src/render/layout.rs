@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 
 use super::halfblock::{self, rgb};
 use super::sprites::sheet;
-use crate::game::hero::{Anim, FLOAT_MS, Hero, Motion, Status};
+use crate::game::hero::{Anim, FLOAT_MS, Fatigue, Hero, Motion, REST_MS, Status};
 use crate::game::world::World;
 use crate::game::xp::xp_to_next;
 use crate::palette;
@@ -140,7 +140,9 @@ fn quest_line(w: &World, area: Rect, buf: &mut Buffer, y: u16) {
 
 /// Night sky with twinkling stars, then a strip of grass that scrolls while anyone walks.
 fn backdrop(w: &World, scene: Rect, buf: &mut Buffer) {
-    halfblock::fill(buf, scene, c('n'));
+    let resting = w.heroes.iter().any(|h| h.rest_ms > 0);
+    let sky = if resting { 'k' } else { 'n' };
+    halfblock::fill(buf, scene, c(sky));
     let gy = scene.bottom() - 1;
     for y in scene.top()..gy {
         for x in scene.left()..scene.right() {
@@ -152,7 +154,7 @@ fn backdrop(w: &World, scene: Rect, buf: &mut Buffer) {
             let cell = &mut buf[(x, y)];
             cell.set_symbol("▀");
             cell.set_fg(c(if h.is_multiple_of(3) { 'w' } else { 's' }));
-            cell.set_bg(c('n'));
+            cell.set_bg(c(sky));
         }
     }
     let walking = w.heroes.iter().any(|h| h.anim() == Anim::Walk);
@@ -173,6 +175,56 @@ fn backdrop(w: &World, scene: Rect, buf: &mut Buffer) {
 /// Pixel row where a sprite of height `h` stands on the ground.
 fn stand_y(scene: Rect, h: u16) -> i32 {
     (scene.height as i32 - 1) * 2 - h as i32
+}
+
+fn pixel(buf: &mut Buffer, scene: Rect, x: i32, py: i32, key: char) {
+    let one = crate::render::sprites::Frame {
+        w: 1,
+        h: 1,
+        px: vec![Some(palette::rgb(key))],
+        ms: 0,
+    };
+    halfblock::draw(buf, scene, &one, x, py, false);
+}
+
+/// Rest scene particles, Well Rested sparkles, sweat drops (SPEC §5.4).
+fn condition(w: &World, h: &Hero, scene: Rect, buf: &mut Buffer, x: i32, py: i32, seed: u64) {
+    let t = w.clock_ms + seed * 977;
+    if h.rest_ms > 0 {
+        // Glowing memories drift from the hero's head into a journal by the fire.
+        let journal = sheet("prop_book").frame("a", 0);
+        halfblock::draw(buf, scene, journal, x + 13, py + 8, false);
+        let done = (REST_MS - h.rest_ms) as f32 / REST_MS as f32;
+        for k in 0..4u64 {
+            let p = ((done * 3.0) + k as f32 * 0.25).fract();
+            let (px, ppy) = (
+                x + 8 + (p * 9.0) as i32,
+                py + 4 + (p * 6.0) as i32 - (k as i32 % 2),
+            );
+            pixel(buf, scene, px, ppy, if k % 2 == 0 { 'C' } else { 'y' });
+        }
+        return;
+    }
+    if h.rested_ms > 0 && (t / 300).is_multiple_of(4) {
+        let k = (t / 1200) % 4;
+        pixel(
+            buf,
+            scene,
+            x + 3 + (k as i32 * 3),
+            py + 1 + (k as i32 % 2) * 3,
+            'C',
+        );
+    }
+    let period = match h.fatigue() {
+        Fatigue::Fresh => return,
+        Fatigue::Tired => 3_000,
+        Fatigue::Exhausted => 1_200,
+    };
+    let phase = t % period;
+    if phase < 600 {
+        // a drop slides down from the forehead
+        pixel(buf, scene, x + 12, py + 4 + (phase / 150) as i32, 'c');
+    }
 }
 
 /// The playing action's prop (book, pigeon, coin…), placed by how it moves.
@@ -211,6 +263,21 @@ fn text_on(buf: &mut Buffer, x: u16, y: u16, max_x: u16, s: &str, fg: char) {
     if x < max_x {
         buf.set_stringn(x, y, s, (max_x - x) as usize, style);
     }
+}
+
+/// "Chapter N · New Run" across the top of the scene.
+fn banner(w: &World, scene: Rect, buf: &mut Buffer) {
+    let Some((text, _)) = &w.chapter_banner else {
+        return;
+    };
+    let s = format!(" ~ {text} ~ ");
+    let len = s.chars().count() as u16;
+    let x = scene.x + scene.width.saturating_sub(len) / 2;
+    let style = Style::default()
+        .fg(c('k'))
+        .bg(c('y'))
+        .add_modifier(Modifier::BOLD);
+    buf.set_stringn(x, scene.y, s, scene.width as usize, style);
 }
 
 /// A departing hero turns around and walks off to the left (SPEC §5.4).
@@ -307,13 +374,17 @@ fn plus_n(w: &World, scene: Rect, buf: &mut Buffer, x: u16, drawn: usize) {
 
 fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
+    banner(w, scene, buf);
     const STEP: u16 = 17;
     let enemy_zone = 28;
     let slots = (scene.width.saturating_sub(enemy_zone + 1) / STEP).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);
     for (i, h) in w.heroes.iter().take(drawn).enumerate() {
         let x = 1 + i as u16 * STEP;
-        let f = sheet(&format!("hero_{}", h.class.id())).frame(h.anim().tag(), h.anim_ms);
+        // Exhausted heroes walk at half speed (SPEC §5.4).
+        let slow = h.anim() == Anim::Walk && h.fatigue() == Fatigue::Exhausted;
+        let ms = if slow { h.anim_ms / 2 } else { h.anim_ms };
+        let f = sheet(&format!("hero_{}", h.class.id())).frame(h.anim().tag(), ms);
         let py = stand_y(scene, f.h);
         if h.level_up_ms > 0 {
             level_up(w, scene, buf, x, h.level_up_ms);
@@ -321,6 +392,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         let (dx, flip) = walk_off(h);
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
         prop(h, scene, buf, x as i32 + dx, py);
+        condition(w, h, scene, buf, x as i32 + dx, py, i as u64);
         float_text(h, scene, buf, x, py);
         if let Some((s, fg)) = badge(h) {
             text(buf, scene.x + x + 12, scene.y, scene.right(), s, fg, 'n');
@@ -381,6 +453,7 @@ fn slimes(w: &World, scene: Rect, buf: &mut Buffer, right: i32, n: i32, hit: boo
 
 fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
+    banner(w, scene, buf);
     const STEP: u16 = 10;
     let slots = (scene.width.saturating_sub(14) / STEP).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);

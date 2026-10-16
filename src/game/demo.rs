@@ -107,14 +107,17 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         (22_000, E::Status(m, Status::Working)),
         (24_000, E::Status(r, Status::Working)),
         (24_000, E::ContextUsed(k, Some(72))),
-        (25_000, E::ContextUsed(k, Some(91))),
+        (23_000, E::ContextUsed(k, Some(91))),
+        // Claude compacts: the Rest scene, then Well Rested.
+        (25_000, E::Rest(k, Some(12))),
         // Quests complete 10 s after their hero stops working (SPEC §6.4).
         (26_000, E::Status(k, Status::Done)),
         (26_000, E::Status(m, Status::Done)),
         (29_000, E::Status(k, Status::Idle)),
         (29_000, E::Status(m, Status::Idle)),
-        (29_000, E::ContextUsed(k, Some(12))),
         (30_000, E::Status(r, Status::Idle)),
+        // OpenCode starts a fresh session: a new Chapter, level kept.
+        (40_000, E::NewRun(r)),
     ];
     let demo = Demo {
         rng: ChaCha8Rng::seed_from_u64(seed),

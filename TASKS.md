@@ -72,11 +72,12 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** `cargo test` failing then passing in a Claude session shows Test Golem laughing, losing 25% HP, then dying with the right XP. (2026-10-16, live in this repo: `cargo test --no-such-flag` → Snapshot Mimic at 75%; `cargo test game::boss` → defeated, +40 XP. The species is per command, so `cargo test` here summons the Mimic, not the Golem.)
 
 ## M6 — Stamina, rest, new runs
-- [ ] Stamina from the latest transcript usage entry (SPEC §7.4).
-- [ ] Stamina bar, Tired/Exhausted states, one toast per quest.
-- [ ] Rest scene + Well Rested buff on the transcript compaction marker or `agent_session` source `compact`.
-- [ ] New Run banner when a Chapter starts; level kept.
-- [ ] Token-based XP with caps (SPEC §7.1); stats STR/INT/DEX/VIT/LUK.
+- [x] Stamina from the latest transcript usage entry (SPEC §7.4).
+- [x] Stamina bar, Tired/Exhausted states, one toast per quest.
+- [x] Rest scene + Well Rested buff on the transcript compaction marker or `agent_session` source `compact`.
+- [x] New Run banner when a Chapter starts; level kept.
+- [x] Token-based XP with caps (SPEC §7.1); stats STR/INT/DEX/VIT/LUK.
+- [ ] **Manual check left for KantaKan** (#8): run `/compact` and `/clear` in a real Claude pane — I can't from inside the session being watched. Covered by `m6_compaction_rests_and_clear_keeps_level` with real-shaped entries.
   **Done when:** running `/compact` in Claude plays the rest scene and refills STA; `/clear` starts a new chapter without losing level.
 
 ## M7 — Quest log, character sheet, town

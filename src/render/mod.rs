@@ -60,6 +60,15 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
     let result = with_terminal(|t| {
         frame_loop(t, &mut world, false, |w, real_ms| {
             visible = drain(&rx, &cmds, w, config, &mut store, visible);
+            for title in std::mem::take(&mut w.toasts) {
+                if config.notify_on_blocked {
+                    let _ = cmds.send(Cmd::Notify {
+                        title,
+                        body: "Context is almost full; a rest (compaction) is near".into(),
+                        sound: "none",
+                    });
+                }
+            }
             w.update(real_ms as u64);
             persist(w, &mut store, &mut last_save, config.store_prompt_text);
             visible
@@ -144,9 +153,6 @@ fn persist(w: &mut World, store: &mut Store, last_save: &mut Instant, store_prom
                 ended_unix_ms: ended,
             },
         );
-        let mut p = store.get(&seat.repo.key, &seat.key());
-        p.quests += 1;
-        store.put(&seat.repo.key, &seat.key(), p);
     }
     if w.save_now || last_save.elapsed() >= AUTOSAVE {
         for h in &w.heroes {

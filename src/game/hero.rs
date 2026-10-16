@@ -3,6 +3,8 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+use serde::{Deserialize, Serialize};
+
 use super::repo::Repo;
 use super::xp;
 
@@ -14,6 +16,53 @@ const LEVEL_UP_MS: u64 = 2_000;
 pub const FLOAT_MS: u64 = 1_200;
 /// More queued actions than this collapse into a combo (SPEC §5.4).
 const MAX_QUEUE: usize = 6;
+/// The Rest scene (compaction), then the Well Rested sparkle (SPEC §5.4).
+pub const REST_MS: u64 = 4_000;
+pub const RESTED_MS: u64 = 120_000;
+pub const REST_XP: u64 = 10;
+/// Token XP per quest is capped (SPEC §7.1).
+const TOKEN_XP_CAP: u64 = 400;
+
+/// Lifetime counters a hero keeps forever (saved per repo). Stats derive from them.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Lifetime {
+    pub quests: u32,
+    pub chapters: u32,
+    pub edits: u32,
+    pub reads: u32,
+    pub shells: u32,
+    pub rests: u32,
+    pub first_tries: u32,
+    pub bosses_won: u32,
+    pub bosses_lost: u32,
+    /// Level-up points, one per level, each added to the top stat at the time.
+    pub bonus: [u32; 5],
+}
+
+impl Lifetime {
+    /// STR/INT/DEX/VIT/LUK (SPEC §7.3).
+    pub fn stats(&self) -> [u32; 5] {
+        let base = [
+            self.edits / 10,
+            self.reads / 10,
+            self.shells / 10,
+            self.rests,
+            self.first_tries,
+        ];
+        std::array::from_fn(|i| base[i] + self.bonus[i])
+    }
+}
+
+/// How tired a hero is from a filling context window (SPEC §7.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fatigue {
+    Fresh,
+    /// ≥ 70% of the context used.
+    Tired,
+    /// ≥ 90% used.
+    Exhausted,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
@@ -212,6 +261,12 @@ pub struct Quest {
     pub time_xp: u64,
     pub xp_gained: u64,
     idle_ms: u64,
+    /// Token XP so far and the tokens behind it (SPEC §7.1).
+    token_xp: u64,
+    context_tokens: u64,
+    output_tokens: u64,
+    /// The "running out of stamina" toast went out for this quest.
+    pub exhausted_toast: bool,
 }
 
 /// A finished quest, for the quest log.
@@ -279,6 +334,14 @@ pub struct Hero {
     pub title_from_prompt: bool,
     /// Tool call id of the boss command this hero is waiting on.
     pub boss_tool: Option<String>,
+    pub life: Lifetime,
+    /// Rest scene time left, then Well Rested buff time left.
+    pub rest_ms: u64,
+    pub rested_ms: u64,
+    /// Last counted usage: message id (Claude repeats usage on each streamed line) and
+    /// context size (token XP counts growth only).
+    last_message: Option<String>,
+    last_context: Option<u64>,
 }
 
 impl Hero {
@@ -305,12 +368,20 @@ impl Hero {
             combo: 0,
             title_from_prompt: false,
             boss_tool: None,
+            life: Lifetime::default(),
+            rest_ms: 0,
+            rested_ms: 0,
+            last_message: None,
+            last_context: None,
         }
     }
 
     pub fn anim(&self) -> Anim {
         if self.leaving_ms.is_some() {
             return Anim::Walk;
+        }
+        if self.rest_ms > 0 {
+            return Anim::Sit;
         }
         if let Some((a, _)) = self.action {
             return a.pose();
@@ -393,6 +464,17 @@ impl Hero {
                 self.float = None;
             }
         }
+        // After the float timer, so "Well rested!" isn't aged out in the same tick.
+        self.rested_ms = self.rested_ms.saturating_sub(dt_ms);
+        if self.rest_ms > 0 {
+            self.track(|h| {
+                h.rest_ms = h.rest_ms.saturating_sub(dt_ms);
+                if h.rest_ms == 0 {
+                    h.rested_ms = RESTED_MS;
+                    h.say("Well rested!".into(), 'C');
+                }
+            });
+        }
         if self.queue.is_empty() {
             self.combo = 0;
         }
@@ -425,6 +507,10 @@ impl Hero {
                     time_xp: 0,
                     xp_gained: 0,
                     idle_ms: 0,
+                    token_xp: 0,
+                    context_tokens: 0,
+                    output_tokens: 0,
+                    exhausted_toast: false,
                 });
             }
             return None;
@@ -458,7 +544,61 @@ impl Hero {
     pub fn finish_quest(&mut self) -> Option<QuestDone> {
         self.quest.as_ref()?;
         self.gain_xp(QUEST_COMPLETE_XP);
+        self.life.quests += 1;
         self.end_quest("complete")
+    }
+
+    pub fn fatigue(&self) -> Fatigue {
+        match self.context_used {
+            Some(90..) => Fatigue::Exhausted,
+            Some(70..) => Fatigue::Tired,
+            _ => Fatigue::Fresh,
+        }
+    }
+
+    /// Compaction: the Rest scene, then Well Rested. Never a punishment (SPEC §7.4).
+    pub fn rest(&mut self, context_after: Option<u8>) {
+        self.track(|h| h.rest_ms = REST_MS);
+        if context_after.is_some() {
+            self.context_used = context_after;
+        }
+        self.last_context = None;
+        self.life.rests += 1;
+        self.gain_xp(REST_XP);
+    }
+
+    /// A new session / `/clear`: a new Chapter. Level and stats stay; STA is full.
+    pub fn new_run(&mut self) {
+        self.life.chapters += 1;
+        if self.context_used.is_some() {
+            self.context_used = Some(0);
+        }
+        self.last_context = None;
+        self.last_message = None;
+        self.title_from_prompt = false;
+        self.boss_tool = None;
+    }
+
+    /// One usage report. Token XP: +1 per 1,000 new context tokens and +1 per 200 output
+    /// tokens, capped at 400 per quest; each message counted once.
+    pub fn usage(&mut self, context: u64, output: u64, message: Option<&str>) {
+        let grew = self.last_context.map_or(0, |c| context.saturating_sub(c));
+        self.last_context = Some(context);
+        let new_message = message.is_some() && message != self.last_message.as_deref();
+        if new_message {
+            self.last_message = message.map(String::from);
+        }
+        let Some(q) = &mut self.quest else { return };
+        q.context_tokens += grew;
+        if new_message {
+            q.output_tokens += output;
+        }
+        let earned = (q.context_tokens / 1_000 + q.output_tokens / 200).min(TOKEN_XP_CAP);
+        let new = earned - q.token_xp;
+        q.token_xp = earned;
+        if new > 0 {
+            self.gain_xp(new);
+        }
     }
 
     /// Close the open quest (if any) with `result`.
@@ -481,6 +621,12 @@ impl Hero {
         }
         if gained > 0 {
             self.level_up_ms = LEVEL_UP_MS;
+        }
+        for _ in 0..gained {
+            // +1 point to the top stat (SPEC §7.2); ties go to the first.
+            let stats = self.life.stats();
+            let top = (0..5).max_by_key(|&i| (stats[i], 5 - i)).unwrap();
+            self.life.bonus[top] += 1;
         }
         gained
     }
@@ -627,6 +773,73 @@ mod tests {
             let (_, p) = h.action().unwrap();
             assert!((0.4..0.6).contains(&p), "{a:?} {p}");
         }
+    }
+
+    #[test]
+    fn fatigue_thresholds() {
+        let mut h = working();
+        for (used, want) in [
+            (None, Fatigue::Fresh),
+            (Some(69), Fatigue::Fresh),
+            (Some(70), Fatigue::Tired),
+            (Some(90), Fatigue::Exhausted),
+        ] {
+            h.context_used = used;
+            assert_eq!(h.fatigue(), want);
+        }
+    }
+
+    #[test]
+    fn rest_scene_then_well_rested() {
+        let mut h = working();
+        h.context_used = Some(95);
+        h.rest(Some(12));
+        assert_eq!(
+            (h.anim(), h.context_used, h.life.rests),
+            (Anim::Sit, Some(12), 1)
+        );
+        assert_eq!(h.xp, REST_XP);
+        h.update(REST_MS);
+        assert_eq!(h.anim(), Anim::Walk);
+        assert_eq!(h.rested_ms, RESTED_MS);
+        assert_eq!(h.float.as_ref().unwrap().0, "Well rested!");
+        assert_eq!(h.life.stats()[3], 1, "VIT");
+    }
+
+    #[test]
+    fn token_xp_counts_growth_once_per_message_and_caps() {
+        let mut h = working();
+        h.update(1); // quest starts
+        h.usage(10_000, 0, Some("m1")); // first sight: baseline only
+        assert_eq!(h.xp, 0);
+        h.usage(15_000, 400, Some("m2"));
+        assert_eq!(h.xp, 5 + 2);
+        h.usage(15_000, 400, Some("m2")); // same message streamed again
+        assert_eq!(h.xp, 7);
+        h.usage(9_000_000, 0, Some("m3"));
+        assert_eq!(h.quest.as_ref().unwrap().token_xp, TOKEN_XP_CAP);
+    }
+
+    #[test]
+    fn new_run_keeps_level_and_counts_a_chapter() {
+        let mut h = working();
+        h.gain_xp(500);
+        let level = h.level;
+        h.context_used = Some(80);
+        h.new_run();
+        assert_eq!(
+            (h.level, h.life.chapters, h.context_used),
+            (level, 1, Some(0))
+        );
+    }
+
+    #[test]
+    fn level_up_points_go_to_the_top_stat() {
+        let mut h = working();
+        h.life.reads = 40; // INT 4 is the top stat
+        h.gain_xp(100);
+        assert_eq!(h.life.bonus, [0, 1, 0, 0, 0]);
+        assert_eq!(h.life.stats()[1], 5);
     }
 
     #[test]

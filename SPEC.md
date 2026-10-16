@@ -411,6 +411,7 @@ All formulas live in `game/xp.rs` as pure functions with unit tests. Constants i
 Anti-farm:
 - Time XP rate halves after 20 min of continuous working in one quest, and stops at the per-quest cap.
 - Token XP per quest is capped at 400; beyond that, quests still give completion/boss XP.
+- Claude Code repeats one message's `usage` on every streamed line of that message, so output tokens are counted once per `message.id`; context XP counts only growth since the last report. Lines read as history (stage start) never earn XP.
 - Nothing is earned while a hero is `blocked` or `idle`.
 
 ### 7.2 Levels
@@ -426,10 +427,14 @@ Anti-farm:
 | **VIT** | every rest (compaction) survived |
 | **LUK** | every first-try boss victory |
 
+Each level-up adds 1 bonus point to the hero's current top stat (ties → the first in STR, INT, DEX, VIT, LUK order). Lifetime counters (quests, chapters, edits, reads, shells, rests, first tries, bosses won/lost, bonus points) are saved in `party.json` next to level and XP; old files without them still load.
+
 ### 7.4 Stamina (context window) — "what happens when context is full"
 - `STA% = 100 - context_pct`, where `context_pct = current_context_tokens / context_window_size`.
 - `context_window_size`: config map by model id, default 200,000; if usage exceeds the configured size, grow the assumed size to the next known tier (200k → 1M) instead of showing > 100%.
-- Thresholds: ≥ 70% used → Tired; ≥ 90% → Exhausted (one toast per quest).
+- Thresholds: ≥ 70% used → Tired (a sweat drop every 3 s); ≥ 90% → Exhausted (walk at half speed, a drop every 1.2 s, one toast per quest — sent only when `notify_on_blocked` is on).
+- Rest scene: 4 s seated, sky dims, memory particles drift into a journal; then Well Rested sparkles for 2 min. +10 XP, +1 VIT, STA from `compactMetadata.postTokens`.
+- New Run: "<hero> — Chapter N · New Run" banner for 3 s; the open quest completes; level, XP and stats stay.
 - Compaction is **not** a punishment: it is the Rest scene, gives VIT and XP, and refills STA. XP and level are never lost.
 - `/clear` → New Run: STA full, new chapter, level kept.
 - Agents with unknown context: STA shows `?` and no stamina states.

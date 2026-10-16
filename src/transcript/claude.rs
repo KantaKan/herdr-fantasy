@@ -26,8 +26,14 @@ pub enum Entry {
         /// The start of the result text (up to 8 KB), to spot failures a pipe hid.
         text: String,
     },
-    /// Current context size in tokens, and the model that reported it.
-    Usage { context: u64, model: Option<String> },
+    /// Current context size in tokens, output tokens of this message, the model, and
+    /// the message id (Claude repeats one message's usage on each streamed line).
+    Usage {
+        context: u64,
+        output: u64,
+        model: Option<String>,
+        message: Option<String>,
+    },
     /// The conversation was compacted; new context size if known.
     Compact { post_tokens: Option<u64> },
 }
@@ -92,7 +98,9 @@ pub fn parse(line: &str) -> Vec<Entry> {
                     context: n("input_tokens")
                         + n("cache_creation_input_tokens")
                         + n("cache_read_input_tokens"),
+                    output: n("output_tokens"),
                     model: msg["model"].as_str().map(String::from),
+                    message: msg["id"].as_str().map(String::from),
                 });
             }
         }

@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use super::hero::Lifetime;
+
 pub const SCHEMA_VERSION: u32 = 1;
 
 /// What a hero keeps between sessions.
@@ -14,8 +16,9 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub struct Progress {
     pub level: u32,
     pub xp: u64,
-    #[serde(default)]
-    pub quests: u32,
+    /// Flattened so old files (`{"level","xp","quests"}`) still load.
+    #[serde(flatten)]
+    pub life: Lifetime,
 }
 
 impl Default for Progress {
@@ -23,7 +26,7 @@ impl Default for Progress {
         Progress {
             level: 1,
             xp: 0,
-            quests: 0,
+            life: Lifetime::default(),
         }
     }
 }
@@ -187,11 +190,13 @@ mod tests {
         let root = tmp("rt");
         let mut s = Store::open(root.clone());
         assert_eq!(s.get("repo1", "claude#0"), Progress::default());
-        let p = Progress {
+        let mut p = Progress {
             level: 7,
             xp: 12,
-            quests: 3,
+            ..Progress::default()
         };
+        p.life.quests = 3;
+        p.life.bonus[1] = 2;
         s.put("repo1", "claude#0", p.clone());
         assert!(s.is_dirty());
         s.flush();
@@ -217,6 +222,12 @@ mod tests {
             names.iter().any(|n| n.starts_with("party.json.corrupt-")),
             "{names:?}"
         );
+    }
+
+    #[test]
+    fn m2_save_files_still_load() {
+        let p: Progress = serde_json::from_str(r#"{"level": 3, "xp": 101, "quests": 5}"#).unwrap();
+        assert_eq!((p.level, p.xp, p.life.quests, p.life.rests), (3, 101, 5, 0));
     }
 
     #[test]

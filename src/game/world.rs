@@ -16,7 +16,14 @@ pub enum GameEvent {
     BossResult(usize, bool),
     Xp(usize, u64),
     ContextUsed(usize, Option<u8>),
+    /// Compaction: Rest scene; context percent afterwards if known.
+    Rest(usize, Option<u8>),
+    /// A new session / `/clear`: new Chapter.
+    NewRun(usize),
 }
+
+/// How long the "Chapter N · New Run" banner stays up.
+pub const BANNER_MS: u64 = 3_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BossState {
@@ -121,6 +128,10 @@ pub struct World {
     pub finished: Vec<Finished>,
     /// Progress changed in a way worth saving right away (level-up, quest end).
     pub save_now: bool,
+    /// herdr toasts to send (drained by the live loop).
+    pub toasts: Vec<String>,
+    /// Big centered banner (text, ms left), e.g. "Chapter 3 · New Run".
+    pub chapter_banner: Option<(String, u64)>,
 }
 
 impl World {
@@ -134,6 +145,8 @@ impl World {
             banner: None,
             finished: Vec::new(),
             save_now: false,
+            toasts: Vec::new(),
+            chapter_banner: None,
         }
     }
 
@@ -197,6 +210,7 @@ impl World {
                 };
                 if failed {
                     b.fail();
+                    h.life.bosses_lost += 1;
                     h.say(format!("{} laughs!", b.name), 'r');
                 } else {
                     let xp = boss::victory_xp(b.fails);
@@ -206,6 +220,10 @@ impl World {
                         _ => " persistence!",
                     };
                     b.defeat();
+                    h.life.bosses_won += 1;
+                    if b.fails == 0 {
+                        h.life.first_tries += 1;
+                    }
                     h.say(format!("+{xp} XP{bonus}"), 'y');
                     if h.gain_xp(xp) > 0 {
                         self.save_now = true;
@@ -224,12 +242,49 @@ impl World {
                     h.context_used = pct.map(|p| p.min(100));
                 }
             }
+            GameEvent::Rest(i, pct) => {
+                if let Some(h) = self.heroes.get_mut(i) {
+                    h.rest(pct);
+                    h.say(format!("+{} XP · VIT up", super::hero::REST_XP), 'C');
+                    self.save_now = true;
+                }
+            }
+            GameEvent::NewRun(i) => {
+                if let Some(h) = self.heroes.get_mut(i) {
+                    if let Some(quest) = h.finish_quest() {
+                        self.finished.push(Finished {
+                            hero: h.name.clone(),
+                            seat: h.seat.clone(),
+                            quest,
+                        });
+                    }
+                    h.new_run();
+                    let text = format!("Chapter {} · New Run", h.life.chapters + 1);
+                    self.chapter_banner = Some((format!("{} — {text}", h.name), BANNER_MS));
+                    self.save_now = true;
+                }
+            }
         }
     }
 
     pub fn update(&mut self, dt: u64) {
         self.clock_ms += dt;
+        if let Some((_, left)) = &mut self.chapter_banner {
+            *left = left.saturating_sub(dt);
+            if *left == 0 {
+                self.chapter_banner = None;
+            }
+        }
         for h in &mut self.heroes {
+            // One "running out of stamina" toast per quest (SPEC §5.4).
+            if h.fatigue() == super::hero::Fatigue::Exhausted
+                && let Some(q) = &mut h.quest
+                && !q.exhausted_toast
+            {
+                q.exhausted_toast = true;
+                self.toasts
+                    .push(format!("{} is running out of stamina", h.name));
+            }
             let level = h.level;
             if let Some(quest) = h.update(dt) {
                 self.finished.push(Finished {
@@ -258,8 +313,13 @@ impl World {
     /// Anything animating beyond idle breathing? Drives adaptive FPS (SPEC §8.5).
     pub fn is_busy(&self) -> bool {
         self.boss.is_some()
+            || self.chapter_banner.is_some()
             || self.heroes.iter().any(|h| {
-                h.status != Status::Idle || h.busy() || h.level_up_ms > 0 || h.leaving_ms.is_some()
+                h.status != Status::Idle
+                    || h.busy()
+                    || h.level_up_ms > 0
+                    || h.leaving_ms.is_some()
+                    || h.rest_ms > 0
             })
     }
 }
@@ -377,6 +437,44 @@ mod tests {
         w.update(crate::game::hero::QUEST_END_IDLE_MS);
         assert_eq!(w.finished.len(), 1);
         assert!(w.save_now);
+    }
+
+    #[test]
+    fn exhausted_toast_once_per_quest() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.apply(GameEvent::Status(a, Status::Working));
+        w.update(1);
+        w.apply(GameEvent::ContextUsed(a, Some(95)));
+        w.update(1);
+        w.update(1);
+        assert_eq!(w.toasts, ["A is running out of stamina"]);
+    }
+
+    #[test]
+    fn new_run_banner_and_rest() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.apply(GameEvent::NewRun(a));
+        assert_eq!(
+            w.chapter_banner.as_ref().unwrap().0,
+            "A — Chapter 2 · New Run"
+        );
+        w.update(BANNER_MS);
+        assert!(w.chapter_banner.is_none());
+        w.apply(GameEvent::Rest(a, Some(10)));
+        assert!(w.is_busy());
+        assert_eq!(w.heroes[a].life.rests, 1);
+    }
+
+    #[test]
+    fn boss_record_counts() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        fight(&mut w, a, true);
+        fight(&mut w, a, false);
+        let l = &w.heroes[a].life;
+        assert_eq!((l.bosses_won, l.bosses_lost, l.first_tries), (1, 1, 0));
     }
 
     #[test]
