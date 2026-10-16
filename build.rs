@@ -10,16 +10,6 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
-/// Hero/face templates use `M` main, `D` shadow, `A` accent (ART.md §4 placeholder rule).
-const CLASSES: [(&str, char, char, char); 6] = [
-    ("knight", 's', 'S', 'r'),
-    ("mage", 'b', 'n', 'y'),
-    ("rogue", 'd', 'p', 'C'),
-    ("ranger", 'g', 't', 'G'),
-    ("cleric", 'w', 's', 'y'),
-    ("bard", 'o', 'r', 'y'),
-];
-
 struct Frame {
     rows: Vec<String>,
     ms: u32,
@@ -76,7 +66,7 @@ fn parse(name: &str, text: &str) -> (Vec<Frame>, Vec<Tag>) {
     (frames, tags)
 }
 
-fn emit(out: &Path, name: &str, frames: &[Frame], tags: &[Tag], subst: &dyn Fn(char) -> char) {
+fn emit(out: &Path, name: &str, frames: &[Frame], tags: &[Tag]) {
     let (w, h) = (frames[0].rows[0].len(), frames[0].rows.len());
     let mut img = image::RgbaImage::new((w * frames.len()) as u32, h as u32);
     for (i, f) in frames.iter().enumerate() {
@@ -85,12 +75,11 @@ fn emit(out: &Path, name: &str, frames: &[Frame], tags: &[Tag], subst: &dyn Fn(c
                 if c == '.' {
                     continue;
                 }
-                let key = subst(c);
                 assert!(
-                    palette::PALETTE.iter().any(|(k, _)| *k == key),
+                    palette::PALETTE.iter().any(|(k, _)| *k == c),
                     "{name}: `{c}` is not a palette key"
                 );
-                let [r, g, b] = palette::rgb(key);
+                let [r, g, b] = palette::rgb(c);
                 img.put_pixel((i * w + x) as u32, y as u32, image::Rgba([r, g, b, 255]));
             }
         }
@@ -137,22 +126,8 @@ fn main() {
     for path in entries {
         let stem = path.file_stem().unwrap().to_str().unwrap().to_string();
         let (frames, tags) = parse(&stem, &fs::read_to_string(&path).unwrap());
-        if stem == "hero" || stem == "face" || stem == "portrait" {
-            for (class, m, d, a) in CLASSES {
-                let name = format!("{stem}_{class}");
-                let subst = move |c| match c {
-                    'M' => m,
-                    'D' => d,
-                    'A' => a,
-                    c => c,
-                };
-                emit(&out, &name, &frames, &tags, &subst);
-                names.push(name);
-            }
-        } else {
-            emit(&out, &stem, &frames, &tags, &|c| c);
-            names.push(stem);
-        }
+        emit(&out, &stem, &frames, &tags);
+        names.push(stem);
     }
 
     // Real art wins over placeholders.

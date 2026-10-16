@@ -1,47 +1,11 @@
 """Run: python tools/gen_special.py
 
-The Sahur Knight: a hero with its own body, not the shared knight template. A proper
+The Sahur Knight: a hero with its own body. A proper
 knight whose helmet is a wooden kentongan drum (the slit of the drum is the visor, with
 glowing eyes behind it), steel armor, a red cape, and a big wooden bat. Original design.
 
 Writes hero_/face_/portrait_sahur_knight.txt with every animation tag the game uses."""
-import os
-
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "placeholders")
-
-
-class Grid:
-    def __init__(self, w, h):
-        self.w, self.h = w, h
-        self.px = [["."] * w for _ in range(h)]
-
-    def set(self, x, y, c):
-        if 0 <= x < self.w and 0 <= y < self.h:
-            self.px[y][x] = c
-
-    def rect(self, x0, y0, x1, y1, c):
-        for y in range(y0, y1 + 1):
-            for x in range(x0, x1 + 1):
-                self.set(x, y, c)
-
-    def line(self, pts, c):
-        for x, y in pts:
-            self.set(x, y, c)
-
-    def outline(self):
-        src = [r[:] for r in self.px]
-        for y in range(self.h):
-            for x in range(self.w):
-                if src[y][x] != ".":
-                    continue
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < self.w and 0 <= ny < self.h and src[ny][nx] not in ".k":
-                        self.px[y][x] = "k"
-                        break
-
-    def rows(self):
-        return ["".join(r) for r in self.px]
+from pixel import Grid, sparkle, write
 
 
 def hero(bob=0, legs="stand", arms="hold", bat="upright", eyes="open", lift=0, cape=0):
@@ -175,14 +139,6 @@ def hero(bob=0, legs="stand", arms="hold", bat="upright", eyes="open", lift=0, c
     return g.rows()
 
 
-def sparkle(rows, pts, c="C"):
-    g = [list(r) for r in rows]
-    for x, y in pts:
-        if 0 <= y < len(g) and 0 <= x < len(g[0]) and g[y][x] == ".":
-            g[y][x] = c
-    return ["".join(r) for r in g]
-
-
 H = hero
 ANIMS = {
     "idle 250": [H(), H(bob=1), H(), H(eyes="off")],
@@ -265,16 +221,6 @@ def portrait(talk):
     g.rect(7, 4, 9, 5, "p")
     g.outline()
     return g.rows()
-
-
-def write(name, anims):
-    lines = []
-    for tag, frames in anims.items():
-        lines.append(f"# tag {tag}")
-        for f in frames:
-            assert all(len(r) == len(f[0]) for r in f) and len(f) == len(frames[0]), name
-            lines += f + [""]
-    open(os.path.join(OUT, name + ".txt"), "w", newline="\n").write("\n".join(lines))
 
 
 write("hero_sahur_knight", ANIMS)

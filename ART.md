@@ -53,14 +53,16 @@ UI colors: panel bg `d`, panel border `S`, text `w`, dim text `s`, XP bar `y`, s
 
 | Class | Default agent | Look |
 |---|---|---|
-| **Knight** | claude | rounded steel helmet (`s`/`S`) with a red plume (`r`), blue tunic, short sword. Visor slit shows two white eye dots. |
-| **Mage** | codex | tall floppy hat and robe in `b`/`n` with gold trim, staff with a cyan orb. |
-| **Rogue** | cursor | dark hood (`d`/`p`), scarf, twin daggers, eyes glow `C`. |
-| **Ranger** | opencode | green cloak (`g`/`t`), bow, leaf on hood. |
-| **Cleric** | gemini | white/gold robe (`w`/`y`), round shield with a sun. |
-| **Bard** | any other | orange vest (`o`), feathered cap, lute. |
-| **Sahur Knight** (special, opt-in via `[classes]`) | — | its own body, not the shared template: a proper knight whose **helmet is a wooden kentongan drum** (`o`/`r` with grain, `y` rim, the drum slit is the visor with glowing `y` eyes — `r` when angry), red plume, `s`/`S` steel chest with a gold emblem and wooden belt, red cape that flutters when running, steel legs, and a big wooden `y` bat: upright at rest, wound up / swung across / followed through on attacks, raised high for spells and victory. Face and portrait are the drum helmet head-on. Drawn by `tools/gen_special.py`. Original design — not the "Tung Tung Tung Sahur" meme character. |
+| **Knight** | claude | rounded steel helmet (`s`/`S`) with a red plume (`r`), blue tunic, short sword, red kite shield with a gold cross. Visor slit shows two white eye dots (`y` when angry). Sword raised for the wind-up, thrust with a swoosh, then a downward cut. |
+| **Mage** | codex | tall floppy hat and robe in `b`/`n` with gold trim and a star, white beard, staff with a cyan orb. Attacks hurl a fireball; eyes glow `C` in a fight. |
+| **Rogue** | cursor | dark hood (`d`/`p`), red scarf over the mouth that streams behind, twin daggers, eyes glow `C` (`r` when angry). Double lunge with slash marks; casts in a puff of smoke. |
+| **Ranger** | opencode | green cloak (`g`/`t`), bow, leaf on hood, quiver on the back. Draws, then looses an arrow; casts with the bow raised and leaves swirling. |
+| **Cleric** | gemini | white/gold robe (`w`/`y`) with a stole, hood with a gold circlet, a floating halo, round shield with a sun, gold mace. |
+| **Bard** | any other | orange vest (`o`), red feathered cap, golden hair, light-wood lute. Bonks with the lute; casts by singing up music notes. |
+| **Sahur Knight** (special, opt-in via `[classes]`) | — | a proper knight whose **helmet is a wooden kentongan drum** (`o`/`r` with grain, `y` rim, the drum slit is the visor with glowing `y` eyes — `r` when angry), red plume, `s`/`S` steel chest with a gold emblem and wooden belt, red cape that flutters when running, steel legs, and a big wooden `y` bat: upright at rest, wound up / swung across / followed through on attacks, raised high for spells and victory. Face and portrait are the drum helmet head-on. Drawn by `tools/gen_special.py`. Original design — not the "Tung Tung Tung Sahur" meme character. |
 | **Wild Card** (special, opt-in) | — | an original harlequin trickster — the joker of a card deck, not any comic character: two-pointed `r`/`y` jester hat with bouncing bells, white `w`/`s` mask with a blue diamond tear and a sly `r` grin, ruffled collar, `r`/`y` diamond motley with pom-pom buttons, one red and one yellow leg, curly pointed shoes. Holds a fan of cards; attacks wind up and flick a card; juggles three balls for spells; bows, then jumps for victory; sits cross-legged at camp. Deliberately avoids the DC Joker's trademarks (green hair, purple suit, scarred smile). |
+
+Every class has its own body, drawn by `tools/gen_classes.py` (specials by `tools/gen_special.py`).
 
 Each class needs these animations (frames @ ms per frame):
 
