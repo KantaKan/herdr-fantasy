@@ -280,4 +280,200 @@ def write(name, anims):
 write("hero_sahur_knight", ANIMS)
 write("face_sahur_knight", {"idle 250": [face(), face(bob=1), face(), face(blink=True)]})
 write("portrait_sahur_knight", {"talk 180": [portrait(False), portrait(True)], "idle 1000": [portrait(False)]})
+
+# ---------------------------------------------------------------------------------------
+# The Wild Card: an original harlequin trickster (the joker of a card deck, not any
+# comic character). Two-pointed jester hat with bells, white mask with a diamond tear,
+# ruffled collar, red/yellow diamond motley, two-tone tights, curly shoes; throws cards.
+
+
+def wild(bob=0, legs="stand", arms="down", card="none", eyes="open", mouth="grin",
+         lift=0, juggle=None, bells=0):
+    g = Grid(16, 16)
+    dy = bob - lift
+    sit = 2 if legs == "sit" else 0
+    hy = 4 + dy + sit                        # top of the face
+    ty = 9 + dy + sit                        # torso top
+    # --- legs: one red, one yellow, curly pointed shoes
+    ly = 12 - lift
+    if legs == "stand":
+        g.rect(5, ly, 6, ly + 2, "r")
+        g.rect(9, ly, 10, ly + 2, "y")
+        g.rect(4, ly + 3, 6, ly + 3, "k")
+        g.set(3, ly + 2, "k")               # curly toe
+        g.rect(9, ly + 3, 11, ly + 3, "k")
+        g.set(12, ly + 2, "k")
+    elif legs == "strideA":
+        g.rect(4, ly, 5, ly + 2, "r")
+        g.rect(10, ly, 11, ly + 2, "y")
+        g.rect(2, ly + 3, 4, ly + 3, "k")
+        g.rect(11, ly + 3, 13, ly + 3, "k")
+        g.set(13, ly + 2, "k")
+    elif legs == "strideB":
+        g.rect(6, ly, 7, ly + 2, "r")
+        g.rect(8, ly, 9, ly + 2, "y")
+        g.rect(6, ly + 3, 10, ly + 3, "k")
+        g.set(10, ly + 2, "k")
+    elif legs == "sit":                      # cross-legged
+        g.rect(4, 14, 7, 14, "r")
+        g.rect(8, 14, 11, 14, "y")
+        g.rect(3, 15, 12, 15, "k")
+    # --- motley body: red/yellow diamonds, buttons, ruffled collar
+    for y in range(ty, ty + 3):
+        for x in range(5, 11):
+            g.set(x, y, "r" if (x + y) % 2 else "y")
+    g.set(7, ty + 1, "w")                    # pom-pom buttons
+    g.set(8, ty + 2, "w")
+    for x in range(4, 12):                   # ruffle: zigzag white/steel
+        g.set(x, ty - 1, "w" if x % 2 else "s")
+    # --- the mask
+    g.rect(5, hy, 10, hy + 3, "w")
+    g.rect(9, hy, 10, hy + 3, "s")           # shadow side
+    if eyes == "open":
+        g.set(6, hy + 1, "k")
+        g.set(9, hy + 1, "k")
+    elif eyes == "wink":
+        g.set(6, hy + 1, "k")
+        g.line([(8, hy + 1), (9, hy + 1)], "k")
+    elif eyes == "closed":
+        g.line([(6, hy + 1), (8, hy + 1), (9, hy + 1)], "k")
+    elif eyes == "glint":
+        g.set(6, hy + 1, "k")
+        g.set(9, hy + 1, "C")
+    g.set(6, hy + 2, "b")                    # the diamond tear
+    if mouth == "grin":
+        g.line([(6, hy + 3), (7, hy + 3), (8, hy + 3), (9, hy + 2)], "r")
+    elif mouth == "laugh":
+        g.rect(6, hy + 3, 9, hy + 3, "k")
+        g.set(7, hy + 3, "r")
+    # --- two-pointed jester hat with bells (they bounce)
+    g.rect(5, hy - 1, 10, hy - 1, "k")       # band
+    g.rect(4, hy - 2, 6, hy - 2, "r")
+    g.rect(3, hy - 3, 4, hy - 3, "r")
+    g.set(2, hy - 3 + bells, "y")            # left bell
+    g.rect(9, hy - 2, 11, hy - 2, "y")
+    g.rect(11, hy - 3, 12, hy - 3, "y")
+    g.set(13, hy - 3 + (1 - bells), "y")     # right bell
+    g.set(7, hy - 2, "r")
+    g.set(8, hy - 2, "y")
+    # --- arms (motley sleeves) and the cards
+    ay = ty + 1
+    if arms == "down":
+        g.set(4, ay, "y")
+        g.set(11, ay, "r")
+        g.set(11, ay + 1, "w")              # glove
+    elif arms == "back":                     # wind-up, card hand behind the head
+        g.set(4, ay, "y")
+        g.set(11, ay - 2, "r")
+        g.set(12, ay - 3, "w")
+    elif arms == "fwd":
+        g.set(4, ay, "y")
+        g.rect(11, ay, 12, ay, "r")
+        g.set(13, ay, "w")
+    elif arms == "up":
+        g.set(4, ay - 2, "y")
+        g.set(3, ay - 3, "w")
+        g.set(11, ay - 2, "r")
+        g.set(12, ay - 3, "w")
+    elif arms == "bow":
+        g.set(4, ay + 1, "y")
+        g.rect(11, ay, 13, ay, "r")
+        g.set(13, ay - 1, "w")
+    elif arms == "raise":
+        g.set(4, ay, "y")
+        g.rect(12, ay - 4, 12, ay - 1, "r")
+        g.set(12, ay - 5, "w")
+
+    def a_card(x, y):
+        g.rect(x, y, x + 1, y + 2, "w")
+        g.set(x, y + 1, "r")                 # the red diamond pip
+    if card == "hand":
+        a_card(12, ay - 5)
+    elif card == "fly":
+        a_card(14, ay - 2)
+    elif card == "fan":                      # a fan of cards at rest
+        a_card(12, ay)
+        g.set(14, ay, "w")
+    if juggle:
+        for x, y, c in juggle:
+            g.set(x, y, c)
+    g.outline()
+    return g.rows()
+
+
+W = wild
+BALLS_A = [(4, 0, "r"), (8, 1, "y"), (12, 0, "C")]
+BALLS_B = [(5, 1, "C"), (9, 0, "r"), (12, 2, "y")]
+WILD = {
+    "idle 250": [W(card="fan"), W(card="fan", bob=1, bells=1), W(card="fan"), W(card="fan", eyes="wink")],
+    "sit 900": [W(legs="sit", eyes="closed", mouth="grin"), W(legs="sit", eyes="closed", bob=1, bells=1)],
+    "walk 100": [W(legs="strideA", card="fan"), W(legs="strideB", card="fan", lift=1, bells=1),
+                 W(legs="strideA", card="fan", bob=1), W(legs="strideB", card="fan", lift=1, bells=1)],
+    "attack 80": [W(arms="back", card="hand", eyes="glint"),
+                  W(arms="fwd", card="fly", eyes="glint", mouth="laugh"),
+                  W(arms="fwd", mouth="laugh", bells=1)],
+    "cast 100": [W(arms="up", juggle=BALLS_A, mouth="laugh"), W(arms="up", juggle=BALLS_B, mouth="laugh", bells=1)],
+    "open 120": [W(arms="fwd", bob=1), W(arms="fwd")],
+    "hold 400": [W(arms="fwd"), W(arms="fwd", bob=1, bells=1)],
+    "raise_hand 300": [W(arms="raise"), W(arms="raise", bob=1, bells=1)],
+    "victory 150": [W(arms="bow", bob=1, eyes="wink"), W(arms="up", lift=1, mouth="laugh", bells=1)],
+}
+
+
+def wild_face(wink=False, bob=0):
+    g = Grid(8, 8)
+    t = 3 + bob
+    g.rect(2, t, 5, 6, "w")
+    g.rect(5, t, 5, 6, "s")
+    g.set(2, t + 1, "k")
+    g.set(4, t + 1, "k" if not wink else "w")
+    g.set(2, t + 2, "b")
+    g.rect(2, t + 3, 4, t + 3, "r")
+    g.rect(1, t - 1, 2, t - 1, "r")          # hat points
+    g.rect(5, t - 1, 6, t - 1, "y")
+    g.set(0, t - 2, "y")
+    g.set(7, t - 2, "y")
+    g.outline()
+    return g.rows()
+
+
+def wild_portrait(talk):
+    g = Grid(32, 32)
+    for y in range(26, 32):                  # motley shoulders
+        for x in range(4, 28):
+            g.set(x, y, "r" if ((x // 3) + (y // 3)) % 2 else "y")
+    for x in range(3, 29):                   # big ruffled collar
+        g.set(x, 24 + (x % 2), "w")
+        g.set(x, 25 - (x % 2), "s")
+    g.rect(8, 9, 23, 23, "w")                # mask
+    g.rect(20, 9, 23, 23, "s")
+    g.rect(10, 13, 13, 15, "k")              # eyes
+    g.rect(18, 13, 21, 15, "k")
+    g.set(11, 13, "w")
+    g.set(19, 13, "w")
+    g.rect(11, 17, 12, 18, "b")              # diamond tear
+    g.set(11, 19, "b")
+    g.set(12, 16, "b")
+    if talk:                                 # laughing
+        g.rect(12, 19, 19, 22, "k")
+        g.rect(13, 21, 18, 22, "r")
+    else:                                    # sly grin
+        g.line([(12, 20), (13, 21), (14, 21), (15, 21), (16, 21), (17, 21), (18, 20), (19, 19)], "r")
+    g.rect(7, 7, 24, 8, "k")                 # hat band
+    g.rect(4, 4, 14, 6, "r")                 # left point
+    g.rect(1, 2, 5, 4, "r")
+    g.rect(17, 4, 27, 6, "y")                # right point
+    g.rect(26, 2, 30, 4, "y")
+    g.rect(0, 4, 1, 5, "y")                  # bells
+    g.rect(30, 4, 31, 5, "r")
+    g.set(15, 5, "r")
+    g.set(16, 5, "y")
+    g.outline()
+    return g.rows()
+
+
+write("hero_wild_card", WILD)
+write("face_wild_card", {"idle 250": [wild_face(), wild_face(bob=1), wild_face(), wild_face(wink=True)]})
+write("portrait_wild_card", {"talk 180": [wild_portrait(False), wild_portrait(True)], "idle 1000": [wild_portrait(False)]})
+
 print("ok")

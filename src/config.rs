@@ -31,7 +31,7 @@ pub enum NotifySound {
     Request,
 }
 
-pub const CLASSES: [&str; 7] = [
+pub const CLASSES: [&str; 8] = [
     "Knight",
     "Mage",
     "Rogue",
@@ -39,6 +39,7 @@ pub const CLASSES: [&str; 7] = [
     "Cleric",
     "Bard",
     "Sahur Knight",
+    "Wild Card",
 ];
 
 #[derive(Debug, Clone, PartialEq)]

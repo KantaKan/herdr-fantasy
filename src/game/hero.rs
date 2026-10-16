@@ -213,6 +213,8 @@ pub enum Class {
     Bard,
     /// Special: kentongan-drum helmet, wood armor, a wooden bat (`tools/gen_special.py`).
     SahurKnight,
+    /// Special: an original harlequin trickster who throws cards (`tools/gen_special.py`).
+    WildCard,
 }
 
 impl Class {
@@ -230,6 +232,7 @@ impl Class {
             "Ranger" => Class::Ranger,
             "Cleric" => Class::Cleric,
             "Sahur Knight" | "SahurKnight" => Class::SahurKnight,
+            "Wild Card" | "WildCard" => Class::WildCard,
             _ => Class::Bard,
         }
     }
@@ -244,6 +247,7 @@ impl Class {
             Class::Cleric => "cleric",
             Class::Bard => "bard",
             Class::SahurKnight => "sahur_knight",
+            Class::WildCard => "wild_card",
         }
     }
 
@@ -257,6 +261,7 @@ impl Class {
             Class::Cleric => "Cleric",
             Class::Bard => "Bard",
             Class::SahurKnight => "Sahur Knight",
+            Class::WildCard => "Wild Card",
         }
     }
 
@@ -270,6 +275,7 @@ impl Class {
             Class::Cleric => 'y',
             Class::Bard => 'o',
             Class::SahurKnight => 'y',
+            Class::WildCard => 'r',
         }
     }
 }
@@ -801,6 +807,8 @@ mod tests {
         c.insert("claude".into(), "Sahur Knight".into());
         assert_eq!(Class::for_agent(&c, "claude"), Class::SahurKnight);
         assert_eq!(Class::SahurKnight.name(), "Sahur Knight");
+        c.insert("claude".into(), "Wild Card".into());
+        assert_eq!(Class::for_agent(&c, "claude"), Class::WildCard);
     }
 
     #[test]
