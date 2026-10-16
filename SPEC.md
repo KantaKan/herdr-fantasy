@@ -468,6 +468,7 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
 
 ### 8.4 Effects
 - Hit flash (1 white frame), floating numbers (3×5 pixel digits, rise 3 rows over 600 ms, fade), screen shake (±1 cell, 150 ms, boss hits only), squash/stretch on jumps, tachyonfx for scene transitions and the ask box opening.
+- As built (M10): every boss result flashes the boss white for one frame and shakes it ±1 col for 150 ms (the boss, not the whole screen — heroes keep their own motion). Floating text (damage, XP, "learned: …") uses terminal text rising 2 rows instead of a pixel digit font. Screen switches fade in from `k` over 250 ms (`tachyonfx::fx::fade_from`); the ask box sweeps in left-to-right over 350 ms (`fx::sweep_in`). No squash/stretch (too fine for halfblock).
 - Body motion (`render/motion.rs`, issue #9): attacks dash up to 5 cols toward the enemy and drift back; held-prop actions step 1 col; thrown spells recoil 1 col; running heroes sway ±1 col, hop 3 px every 6–9 s (per-hero phase, not while Exhausted) and kick up dust at each stride. All of it only while the hero is really working.
 - Respect `config.reduced_motion = true`: no shake, no flashes, no dashes/hops/sway/dust, transitions become instant.
 
@@ -480,6 +481,7 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
   - Startup to first frame: < 150 ms.
   - Transcript tailing: only appended bytes read; never on the render task.
 - Add a `--bench` flag to `stage --demo` that prints average CPU and frame time after 60 s.
+- As built: `--bench` runs 60 s, then prints ticks, redraws, average/worst tick time and loop-busy % of one core. Measured 2026-10-16 (`--scenario stress`, release, Windows Terminal + herdr): 0.34% of one core (process CPU), 15.3 MB peak RSS, 0.5 ms avg / 4.9 ms worst tick. Live stage with one Claude agent: 0.7% / 16 MB. Startup to first frame was not measured separately.
 
 ---
 

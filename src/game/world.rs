@@ -56,7 +56,12 @@ pub struct Boss {
     pub state: BossState,
     pub state_ms: u64,
     pub fails: u32,
+    /// Time left of the hit flash/shake after each result (SPEC §8.4).
+    pub hit_ms: u64,
 }
+
+/// Boss hit flash + shake length.
+pub const HIT_MS: u64 = 150;
 
 const LAUGH_MS: u64 = 1200;
 const DYING_MS: u64 = 1200;
@@ -76,12 +81,14 @@ impl Boss {
             state: BossState::Idle,
             state_ms: 0,
             fails: 0,
+            hit_ms: 0,
         }
     }
 
     fn set(&mut self, s: BossState) {
         self.state = s;
         self.state_ms = 0;
+        self.hit_ms = HIT_MS;
     }
 
     /// Failing knocks off 25% but never kills; only victory finishes the boss.
@@ -99,6 +106,7 @@ impl Boss {
     /// Advance timers; returns false once the death animation is over.
     fn update(&mut self, dt: u64) -> bool {
         self.state_ms += dt;
+        self.hit_ms = self.hit_ms.saturating_sub(dt);
         match self.state {
             BossState::Laugh if self.state_ms >= LAUGH_MS => self.set(BossState::Idle),
             BossState::Dying if self.state_ms >= DYING_MS => return false,

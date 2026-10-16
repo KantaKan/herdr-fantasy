@@ -317,9 +317,33 @@ pub fn run(config: &Config, demo: bool) -> anyhow::Result<()> {
     super::sprites::sheets();
     let mut terminal = ratatui::init();
     let mut last = Instant::now();
+    // The JRPG box sweeps open (tachyonfx, SPEC §5.5).
+    let mut open_fx = (!config.reduced_motion).then(|| {
+        tachyonfx::fx::sweep_in(
+            tachyonfx::Motion::LeftToRight,
+            12,
+            0,
+            c('k'),
+            (350, tachyonfx::Interpolation::QuadOut),
+        )
+    });
     let result = (|| -> anyhow::Result<()> {
         loop {
-            terminal.draw(|f| draw(&ask, f.area(), f.buffer_mut()))?;
+            let dt = last.elapsed().as_millis() as u32;
+            terminal.draw(|f| {
+                let area = f.area();
+                draw(&ask, area, f.buffer_mut());
+                if let Some(e) = &mut open_fx {
+                    e.process(
+                        tachyonfx::Duration::from_millis(dt as _),
+                        f.buffer_mut(),
+                        area,
+                    );
+                }
+            })?;
+            if open_fx.as_ref().is_some_and(|e| e.done()) {
+                open_fx = None;
+            }
             if event::poll(Duration::from_millis(50))?
                 && let Event::Key(k) = event::read()?
                 && k.kind == KeyEventKind::Press

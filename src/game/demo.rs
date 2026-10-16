@@ -21,6 +21,10 @@ pub struct Demo {
     loop_ms: u64,
     next_act: Vec<u64>,
     loops: usize,
+    /// Time between a hero's random actions (ms range).
+    act_gap: (u64, u64),
+    /// Stress mode: act even while busy (exercises combo collapse).
+    flood: bool,
 }
 
 /// One boss command per demo loop, so the roster and size tiers all show up.
@@ -68,6 +72,7 @@ const FILES: [&str; 5] = [
 pub fn scenario(name: &str, seed: u64, classes: &Classes) -> Option<(World, Demo)> {
     match name {
         "party" => Some(party(seed, classes)),
+        "stress" => Some(stress(seed, classes)),
         _ => None,
     }
 }
@@ -148,6 +153,61 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         loop_ms: 42_000,
         next_act: vec![1_000; w.heroes.len()],
         loops: 0,
+        act_gap: (900, 2200),
+        flood: false,
+    };
+    (w, demo)
+}
+
+/// Perf test (SPEC §12): 8 heroes acting every 80–250 ms, back-to-back bosses, Summons
+/// coming and going. Loops every 20 s.
+pub fn stress(seed: u64, classes: &Classes) -> (World, Demo) {
+    let mut w = World::new("stress-test", "Forge Village");
+    let kinds = [
+        "claude", "codex", "cursor", "opencode", "gemini", "grok", "claude", "codex",
+    ];
+    let names = [
+        "Claude",
+        "Codex",
+        "Cursor",
+        "OpenCode",
+        "Gemini",
+        "Grok",
+        "Claude II",
+        "Codex II",
+    ];
+    for (k, n) in kinds.iter().zip(names) {
+        w.add_hero(n, Class::for_agent(classes, k));
+    }
+    let mut script = Vec::new();
+    for i in 0..w.heroes.len() {
+        script.push((0, E::Status(i, Status::Working)));
+        script.push((0, E::ContextUsed(i, Some(40 + i as u8 * 7))));
+    }
+    for round in 0..4u64 {
+        let t = round * 5_000;
+        let i = round as usize % w.heroes.len();
+        script.push((t, E::BossFight(i, BossKind::Test, String::new())));
+        script.push((t + 1_500, E::BossResult(i, round % 2 == 0)));
+        for s in 0..3u64 {
+            let id = format!("toolu_stress_{round}_{s}");
+            script.push((t + 200 * s, E::Summon((i + 1) % 8, id.clone(), false)));
+            script.push((t + 3_000 + 200 * s, E::Dismiss((i + 1) % 8, id)));
+        }
+    }
+    script.push((12_000, E::Rest(2, Some(10))));
+    script.sort_by_key(|(at, _)| *at);
+    let n = w.heroes.len();
+    let demo = Demo {
+        rng: ChaCha8Rng::seed_from_u64(seed),
+        t: 0,
+        idx: 0,
+        script,
+        loop_ms: 20_000,
+        next_act: vec![100; n],
+        loops: 0,
+        act_gap: (80, 250),
+        flood: true,
     };
     (w, demo)
 }
@@ -176,8 +236,8 @@ impl Demo {
             if self.t < self.next_act[i] {
                 continue;
             }
-            self.next_act[i] = self.t + self.rng.random_range(900..2200);
-            if w.heroes[i].status != Status::Working || w.heroes[i].busy() {
+            self.next_act[i] = self.t + self.rng.random_range(self.act_gap.0..self.act_gap.1);
+            if w.heroes[i].status != Status::Working || (w.heroes[i].busy() && !self.flood) {
                 continue;
             }
             let file = FILES[self.rng.random_range(0..FILES.len())];
@@ -242,6 +302,16 @@ mod tests {
         let w = run(1, 16_000 / 66);
         assert_eq!(w.boss.as_ref().unwrap().fails, 2);
         assert!(run(1, 24_000 / 66).boss.is_none());
+    }
+
+    #[test]
+    fn stress_keeps_eight_heroes_busy() {
+        let (mut w, mut d) = stress(1, &crate::config::Config::default().classes);
+        for _ in 0..(60_000 / 66) {
+            d.advance(66, &mut w);
+        }
+        assert_eq!(w.heroes.len(), 8);
+        assert!(w.heroes.iter().all(|h| h.level > 1), "everyone earned XP");
     }
 
     #[test]

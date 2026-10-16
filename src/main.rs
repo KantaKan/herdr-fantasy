@@ -69,14 +69,16 @@ fn main() -> anyhow::Result<()> {
             scenario,
             seed,
             speed,
-            ..
+            bench,
         } => {
             let seed = seed.unwrap_or_else(|| {
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |d| d.as_nanos() as u64)
             });
-            return render::run_demo(&scenario, seed, speed, &config);
+            // SPEC §8.5: measure over 60 s.
+            let bench = bench.then(|| std::time::Duration::from_secs(60));
+            return render::run_demo(&scenario, seed, speed, &config, bench);
         }
         Command::Stage { .. } => return render::run_live(&config),
         Command::Ask { demo } => return render::ask::run(&config, demo),

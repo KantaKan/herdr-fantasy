@@ -30,18 +30,68 @@ const HIDDEN_WAKE: Duration = Duration::from_secs(1);
 const AUTOSAVE: Duration = Duration::from_secs(30);
 const MAX_WAIT: Duration = Duration::from_millis(100);
 
-pub fn run_demo(scenario: &str, seed: u64, speed: f32, config: &Config) -> anyhow::Result<()> {
-    let (mut world, mut demo) = demo::scenario(scenario, seed, &config.classes)
-        .ok_or_else(|| anyhow::anyhow!("unknown demo scenario `{scenario}` (try: party)"))?;
+/// Frame-loop cost, for `stage --demo --bench` (SPEC §8.5).
+#[derive(Debug, Default)]
+pub struct Bench {
+    /// Stop after this long.
+    limit: Duration,
+    frames: u64,
+    drawn: u64,
+    busy: Duration,
+    worst: Duration,
+}
+
+impl Bench {
+    fn record(&mut self, took: Duration, drew: bool) {
+        self.frames += 1;
+        self.drawn += drew as u64;
+        self.busy += took;
+        self.worst = self.worst.max(took);
+    }
+
+    pub fn report(&self, wall: Duration) -> String {
+        let avg = self.busy.as_secs_f64() * 1000.0 / self.frames.max(1) as f64;
+        format!(
+            "bench: {:.0} s, {} ticks ({} redrawn), avg {:.3} ms/tick, worst {:.2} ms, \
+             loop busy {:.2}% of one core",
+            wall.as_secs_f64(),
+            self.frames,
+            self.drawn,
+            avg,
+            self.worst.as_secs_f64() * 1000.0,
+            self.busy.as_secs_f64() / wall.as_secs_f64().max(1e-9) * 100.0
+        )
+    }
+}
+
+pub fn run_demo(
+    scenario: &str,
+    seed: u64,
+    speed: f32,
+    config: &Config,
+    bench: Option<Duration>,
+) -> anyhow::Result<()> {
+    let (mut world, mut demo) =
+        demo::scenario(scenario, seed, &config.classes).ok_or_else(|| {
+            anyhow::anyhow!("unknown demo scenario `{scenario}` (try: party, stress)")
+        })?;
     sprites::sheets(); // decode before the first frame
     world.reduced_motion = config.reduced_motion;
     world.memes = config.memes;
     let speed = speed.max(0.0) as f64;
     let mut carry = 0.0;
-    with_terminal(|t| {
+    let mut bench_state = bench.map(|limit| {
+        let b = Bench {
+            limit,
+            ..Bench::default()
+        };
+        (b, Instant::now())
+    });
+    let result = with_terminal(|t| {
         frame_loop(
             t,
             &mut world,
+            bench_state.as_mut(),
             |_, _| {},
             |w, real_ms| {
                 let ms = real_ms * speed + carry;
@@ -51,7 +101,11 @@ pub fn run_demo(scenario: &str, seed: u64, speed: f32, config: &Config) -> anyho
                 true
             },
         )
-    })
+    });
+    if let Some((b, started)) = &bench_state {
+        println!("{}", b.report(started.elapsed()));
+    }
+    result
 }
 
 /// The real stage: party from herdr, progress saved per repo.
@@ -75,7 +129,7 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
                 let _ = cmds.send(Cmd::Focus(seat.pane_id.clone()));
             }
         };
-        frame_loop(t, &mut world, focus, |w, real_ms| {
+        frame_loop(t, &mut world, None, focus, |w, real_ms| {
             visible = drain(&rx, &cmds, w, config, &mut store, visible);
             for title in std::mem::take(&mut w.toasts) {
                 if config.notify_on_blocked {
@@ -201,10 +255,12 @@ fn with_terminal(
 }
 
 /// `step(world, real_ms)` advances the game and returns whether the stage is visible.
-/// `on_focus(world, hero)` runs when the user presses Enter on a hero.
+/// `on_focus(world, hero)` runs when the user presses Enter on a hero. With `bench`,
+/// the loop measures itself and stops after the bench duration.
 fn frame_loop(
     terminal: &mut ratatui::DefaultTerminal,
     world: &mut World,
+    mut bench: Option<&mut (Bench, Instant)>,
     mut on_focus: impl FnMut(&World, usize),
     mut step: impl FnMut(&mut World, f64) -> bool,
 ) -> anyhow::Result<()> {
@@ -212,11 +268,14 @@ fn frame_loop(
     let mut prev: Option<Buffer> = None;
     let mut visible = true;
     let mut view = view::View::default();
+    // Screen changes fade in from the night (tachyonfx, SPEC §8.4).
+    let mut fx: Option<tachyonfx::Effect> = None;
+    let mut shown = view.screen;
     loop {
         let wait = if !visible {
             HIDDEN_WAKE
         } else {
-            let fps = if world.is_busy() {
+            let fps = if world.is_busy() || fx.is_some() {
                 ACTIVE_FPS
             } else {
                 IDLE_FPS
@@ -249,6 +308,7 @@ fn frame_loop(
         let now = Instant::now();
         let real_ms = (now - last).as_secs_f64() * 1000.0;
         last = now;
+        let tick_start = Instant::now();
         visible = step(world, real_ms);
         view.clamp(world.heroes.len());
         if !visible {
@@ -260,9 +320,37 @@ fn frame_loop(
         let area = Rect::new(0, 0, size.width, size.height);
         let mut buf = Buffer::empty(area);
         layout::render(world, &view, area, &mut buf);
-        if prev.as_ref() != Some(&buf) {
+        if view.screen != shown {
+            shown = view.screen;
+            if !world.reduced_motion {
+                let night = halfblock::rgb(crate::palette::rgb('k'));
+                fx = Some(tachyonfx::fx::fade_from(
+                    night,
+                    night,
+                    (250, tachyonfx::Interpolation::QuadOut),
+                ));
+            }
+        }
+        if let Some(e) = &mut fx {
+            e.process(
+                tachyonfx::Duration::from_millis(real_ms as _),
+                &mut buf,
+                area,
+            );
+            if e.done() {
+                fx = None;
+            }
+        }
+        let drew = prev.as_ref() != Some(&buf);
+        if drew {
             terminal.draw(|f| f.buffer_mut().clone_from(&buf))?;
             prev = Some(buf);
+        }
+        if let Some((b, started)) = bench.as_deref_mut() {
+            b.record(tick_start.elapsed(), drew);
+            if started.elapsed() >= b.limit {
+                return Ok(());
+            }
         }
     }
 }
@@ -405,6 +493,22 @@ mod preview {
                     ..Default::default()
                 };
                 layout::render(&world, &v, area, &mut buf);
+            }
+            if std::env::var("PREVIEW_JSON").is_ok() {
+                // cells as [symbol, fg, bg] for tools/make_gif.py
+                let hex = |c: Color| match c {
+                    Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+                    _ => "#000000".into(),
+                };
+                let cells: Vec<serde_json::Value> = buf
+                    .content
+                    .iter()
+                    .map(|c| serde_json::json!([c.symbol(), hex(c.fg), hex(c.bg)]))
+                    .collect();
+                let doc = serde_json::json!({ "w": w, "h": h, "cells": cells });
+                let name = format!("{dir}/frame_{tick:05}.json");
+                std::fs::write(name, doc.to_string()).unwrap();
+                continue;
             }
             let s = 5;
             let mut img = image::RgbImage::new(w as u32 * s, h as u32 * 2 * s);

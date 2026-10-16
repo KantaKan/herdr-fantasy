@@ -466,11 +466,30 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
             s = sheet(&format!("boss_{}_{}", b.id, tier.id()));
         }
         let f = s.frame(b.tag(), b.state_ms);
+        // Hit: one white frame, then a ±1 column shake while it lasts (SPEC §8.4).
+        let hit = b.hit_ms > 0 && !w.reduced_motion;
+        let white;
+        let f = if hit && b.hit_ms > crate::game::world::HIT_MS - 60 {
+            white = crate::render::sprites::Frame {
+                w: f.w,
+                h: f.h,
+                px: f.px.iter().map(|p| p.map(|_| palette::rgb('w'))).collect(),
+                ms: f.ms,
+            };
+            &white
+        } else {
+            f
+        };
+        let shake = if hit {
+            [1, -1][((b.hit_ms / 40) % 2) as usize]
+        } else {
+            0
+        };
         halfblock::draw(
             buf,
             scene,
             f,
-            right - f.w as i32 - 2,
+            right - f.w as i32 - 2 + shake,
             stand_y(scene, f.h),
             false,
         );
