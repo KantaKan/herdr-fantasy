@@ -5,6 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 
 use super::halfblock::{self, rgb};
+use super::motion;
 use super::sprites::sheet;
 use crate::game::hero::{Anim, FLOAT_MS, Fatigue, Hero, Motion, REST_MS, Status};
 use crate::game::world::World;
@@ -385,11 +386,28 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         let slow = h.anim() == Anim::Walk && h.fatigue() == Fatigue::Exhausted;
         let ms = if slow { h.anim_ms / 2 } else { h.anim_ms };
         let f = sheet(&format!("hero_{}", h.class.id())).frame(h.anim().tag(), ms);
-        let py = stand_y(scene, f.h);
+        let ground = stand_y(scene, f.h);
         if h.level_up_ms > 0 {
             level_up(w, scene, buf, x, h.level_up_ms);
         }
-        let (dx, flip) = walk_off(h);
+        let (mut dx, flip) = walk_off(h);
+        let mut py = ground;
+        let running = h.anim() == Anim::Walk && h.leaving_ms.is_none();
+        if !w.reduced_motion {
+            let seed = i as u64;
+            if let Some((action, t)) = h.action() {
+                dx += motion::lunge(action, t);
+            }
+            if running {
+                dx += motion::sway(w.clock_ms, seed);
+                if !slow {
+                    py -= motion::hop(w.clock_ms, seed);
+                }
+                for &(ddx, ddy) in motion::dust(ms) {
+                    pixel(buf, scene, x as i32 + dx + ddx, ground + ddy, 'S');
+                }
+            }
+        }
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
         prop(h, scene, buf, x as i32 + dx, py);
         condition(w, h, scene, buf, x as i32 + dx, py, i as u64);

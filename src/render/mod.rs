@@ -4,6 +4,7 @@
 pub mod ask;
 pub mod halfblock;
 pub mod layout;
+pub mod motion;
 pub mod sprites;
 
 use std::sync::mpsc::{Receiver, TryRecvError};
@@ -31,6 +32,7 @@ pub fn run_demo(scenario: &str, seed: u64, speed: f32, config: &Config) -> anyho
     let (mut world, mut demo) = demo::scenario(scenario, seed, &config.classes)
         .ok_or_else(|| anyhow::anyhow!("unknown demo scenario `{scenario}` (try: party)"))?;
     sprites::sheets(); // decode before the first frame
+    world.reduced_motion = config.reduced_motion;
     let speed = speed.max(0.0) as f64;
     let mut carry = 0.0;
     with_terminal(|t| {
@@ -54,6 +56,7 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
     let mut store = Store::open(root);
     let mut world = World::new("…", "Meadow Hamlet");
     world.banner = Some("looking for herdr…".into());
+    world.reduced_motion = config.reduced_motion;
     sprites::sheets();
     let mut visible = true;
     let mut last_save = Instant::now();

@@ -132,6 +132,8 @@ pub struct World {
     pub toasts: Vec<String>,
     /// Big centered banner (text, ms left), e.g. "Chapter 3 · New Run".
     pub chapter_banner: Option<(String, u64)>,
+    /// Config `reduced_motion`: no dashes, hops, sway, or shake.
+    pub reduced_motion: bool,
 }
 
 impl World {
@@ -147,6 +149,7 @@ impl World {
             save_now: false,
             toasts: Vec::new(),
             chapter_banner: None,
+            reduced_motion: false,
         }
     }
 

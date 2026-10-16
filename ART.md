@@ -66,7 +66,7 @@ Each class needs these animations (frames @ ms per frame):
 |---|---|---|---|
 | `idle` | 4 | 250 | breathing, 1px bob |
 | `sit` | 2 | 600 | at campfire (idle state) |
-| `walk` | 4 | 120 | |
+| `walk` | 4 | 100 | run cycle: head/shoulders lean 1px forward, wide stride with arms swinging opposite, body lifts 1px on the passing frames |
 | `attack` | 3 | 80 | wind-up, swing, follow-through |
 | `cast` | 4 | 100 | used for Bash |
 | `open` | 4 | 120 | opening a chest |

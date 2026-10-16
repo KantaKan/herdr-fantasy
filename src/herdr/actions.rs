@@ -17,11 +17,52 @@ const MIN_WORKSPACE_ROWS: u16 = 24;
 const STAGE_MIN_ROWS: f32 = 10.0;
 const STAGE_SHARE: f32 = 0.25;
 
+fn looks_like_stage(p: &PaneInfo) -> bool {
+    p.tokens.contains_key(STAGE_TOKEN) || p.label.as_deref() == Some(STAGE_LABEL)
+}
+
 pub fn stage_pane<'a>(snap: &'a Snapshot, workspace: &str) -> Option<&'a PaneInfo> {
-    snap.panes.iter().find(|p| {
-        p.workspace_id == workspace
-            && (p.tokens.contains_key(STAGE_TOKEN) || p.label.as_deref() == Some(STAGE_LABEL))
-    })
+    snap.panes
+        .iter()
+        .find(|p| p.workspace_id == workspace && looks_like_stage(p))
+}
+
+/// Is our stage process the pane's foreground program (`pane.process_info` result)?
+pub fn runs_stage(process_info: &Value) -> bool {
+    process_info["process_info"]["foreground_processes"]
+        .as_array()
+        .is_some_and(|ps| {
+            ps.iter().any(|p| {
+                p["name"]
+                    .as_str()
+                    .is_some_and(|n| n.to_lowercase().starts_with("herdr-fantasy"))
+            })
+        })
+}
+
+/// After a herdr server restart the stage pane comes back as a plain shell that still
+/// carries the stage label (SPEC §15 Q3). Close those and forget them, so a real stage
+/// gets opened in their place.
+fn prune_dead_stages(c: &mut Client, snap: &mut Snapshot) {
+    let candidates: Vec<String> = snap
+        .panes
+        .iter()
+        .filter(|p| looks_like_stage(p))
+        .map(|p| p.pane_id.clone())
+        .collect();
+    for pane in candidates {
+        let alive = c
+            .request("pane.process_info", json!({ "pane_id": pane }))
+            .map(|info| runs_stage(&info))
+            .unwrap_or(true); // can't tell: leave it alone
+        if !alive {
+            tracing::info!("closing dead stage pane {pane}");
+            if let Err(e) = c.request("pane.close", json!({ "pane_id": pane })) {
+                tracing::warn!("close dead stage {pane}: {e:#}");
+            }
+            snap.panes.retain(|p| p.pane_id != pane);
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -133,7 +174,8 @@ fn context_workspace(snap: &Snapshot) -> Option<String> {
 
 pub fn autostart(mode: AutoOpen) -> anyhow::Result<()> {
     let mut c = Client::connect()?;
-    let snap = snapshot(&mut c)?;
+    let mut snap = snapshot(&mut c)?;
+    prune_dead_stages(&mut c, &mut snap);
     for plan in plan_autostart(&snap, mode) {
         if let Err(e) = open_stage(&mut c, &plan) {
             tracing::warn!("autostart: open stage in {}: {e:#}", plan.workspace);
@@ -144,7 +186,8 @@ pub fn autostart(mode: AutoOpen) -> anyhow::Result<()> {
 
 pub fn toggle_stage() -> anyhow::Result<()> {
     let mut c = Client::connect()?;
-    let snap = snapshot(&mut c)?;
+    let mut snap = snapshot(&mut c)?;
+    prune_dead_stages(&mut c, &mut snap);
     let ws = context_workspace(&snap).ok_or_else(|| anyhow::anyhow!("no workspace"))?;
     match stage_pane(&snap, &ws) {
         Some(p) => {
@@ -243,6 +286,17 @@ mod tests {
         let mut s = snap(&[(1, 40)]);
         s.panes[0].label = Some(STAGE_LABEL.into());
         assert!(plan_autostart(&s, AutoOpen::EveryWorkspace).is_empty());
+    }
+
+    #[test]
+    fn only_a_running_stage_process_counts() {
+        let alive = json!({"process_info": {"foreground_processes": [
+            {"name": "herdr-fantasy.exe", "argv": ["herdr-fantasy.EXE", "stage"]}]}});
+        let shell = json!({"process_info": {"foreground_processes": [
+            {"name": "powershell.exe"}]}});
+        assert!(runs_stage(&alive));
+        assert!(!runs_stage(&shell));
+        assert!(!runs_stage(&json!({})));
     }
 
     #[test]

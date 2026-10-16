@@ -461,7 +461,8 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
 
 ### 8.4 Effects
 - Hit flash (1 white frame), floating numbers (3×5 pixel digits, rise 3 rows over 600 ms, fade), screen shake (±1 cell, 150 ms, boss hits only), squash/stretch on jumps, tachyonfx for scene transitions and the ask box opening.
-- Respect `config.reduced_motion = true`: no shake, no flashes, transitions become instant.
+- Body motion (`render/motion.rs`, issue #9): attacks dash up to 5 cols toward the enemy and drift back; held-prop actions step 1 col; thrown spells recoil 1 col; running heroes sway ±1 col, hop 3 px every 6–9 s (per-hero phase, not while Exhausted) and kick up dust at each stride. All of it only while the hero is really working.
+- Respect `config.reduced_motion = true`: no shake, no flashes, no dashes/hops/sway/dust, transitions become instant.
 
 ### 8.5 Frame loop and performance budget
 - Adaptive FPS: 12–15 during actions/battles, 4 when all heroes idle, **0 when the stage pane is not visible** (other tab/workspace focused, or zoomed away).
@@ -570,7 +571,7 @@ state/
 ## 15. Open questions to verify during implementation
 1. ~~CLI flags for `herdr plugin pane open`~~ Resolved: `--plugin`, `--entrypoint`, `--placement overlay|split|tab|zoomed`, `--workspace`, `--target-pane`, `--direction right|down`, `--cwd`, `--env`, `--focus` / `--no-focus` — **no `--ratio`** (it opened a 50/50 split; resize afterwards with `herdr pane resize` / `layout.set_split_ratio` at M3). `herdr pane split` does have `--ratio` (sizes the new pane).
 2. ~~Detect an existing stage pane~~ Resolved: pane info has no plugin id, only the manifest title as `label` (users can rename it). The stage tags its own pane with metadata token `hf_stage=1` (`pane.report_metadata`), which shows in snapshot `panes[].tokens`; autostart/toggle treat a pane with that token **or** the label as the stage.
-3. Behavior of plugin panes after herdr server restart / live handoff. (Not tested yet: it means restarting the user's server.) Also seen once: a fresh stage landed at 59/41 instead of 75/25; five retries all gave 74/26.
+3. ~~Plugin panes after a herdr server restart~~ Resolved (observed 2026-10-16 after an overnight restart): the pane is restored with its `label` but **as a plain shell** — the stage command is not re-run, and metadata tokens are gone. `autostart` (which runs on startup) and `toggle-stage` now check `pane.process_info`; a stage-looking pane whose foreground process isn't `herdr-fantasy` is closed and replaced. Also seen once: a fresh stage landed at 59/41 instead of 75/25; five retries all gave 74/26.
 4. ~~Event stream vs polling~~ Resolved: status-changed subscriptions are per pane; v1 polls `session.snapshot` (§3.2).
 5. Kitty graphics probe results inside herdr panes, locally and over SSH.
 6. ~~Transcript field names~~ Resolved in §3.3 (subagent tool is `Agent`; non-zero exit sets `is_error`).
