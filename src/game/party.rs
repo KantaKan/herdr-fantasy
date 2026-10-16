@@ -249,6 +249,7 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
                     w.apply(GameEvent::Summon(i, id.clone(), background));
                 }
                 if super::duck::is_force_push(command) {
+                    w.heroes[i].life.force_pushes += 1;
                     w.apply(GameEvent::Quip(super::duck::Quip::ForcePush, id.clone()));
                 }
                 let life = &mut w.heroes[i].life;

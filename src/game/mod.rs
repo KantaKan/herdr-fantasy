@@ -1,3 +1,4 @@
+pub mod badges;
 pub mod boss;
 pub mod demo;
 pub mod duck;

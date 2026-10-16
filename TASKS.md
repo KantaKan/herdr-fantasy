@@ -119,9 +119,9 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** beating bosses drops items that survive a restart and raise the stats on the character sheet. (2026-10-16: `first_boss_win_drops_loot_that_raises_a_stat`, the persist round trip, and the demo — "Claude found Rusty Shield of the Early Sahur!", Gear on the sheet. The drop shows in the headline banner rather than a float, so it doesn't fight the +XP float.)
 
 ## M12 — Achievements
-- [ ] `game/badges.rs` (pure): a table of badges, each a check over the hero's lifetime counters (First Try, Persistent, Force Pusher, 10/100 Bosses, Shadow Lord, Bookworm, Blacksmith, Well Rested, Comeback, Chapter 10, Level 10 …).
-- [ ] Unlocks checked after each event; a "🏆 <badge>" banner + float; saved with progress; badges section on the character sheet.
-  **Done when:** reaching a badge's condition shows the banner once, and it stays unlocked after a restart.
+- [x] `game/badges.rs` (pure): a table of badges, each a check over the hero's lifetime counters (First Try, Persistent, Force Pusher, 10/100 Bosses, Shadow Lord, Bookworm, Blacksmith, Well Rested, Comeback, Chapter 10, Level 10 …).
+- [x] Unlocks checked after each event; a "🏆 <badge>" banner + float; saved with progress; badges section on the character sheet.
+  **Done when:** reaching a badge's condition shows the banner once, and it stays unlocked after a restart. (2026-10-16: `badges_unlock_once_and_queue_behind_the_loot_banner`; demo shows the loot banner, then "🏆 Claude: First Blood!". Badges are saved with the rest of `Lifetime`, covered by the persist round trip. Night Owl was dropped: no local-time source without a new dependency.)
 
 ## M13 — Party combos + daily quest
 - [ ] A second hero running a boss command while a boss is up **joins the fight**: team attack animation, both get the victory XP plus a combo bonus.

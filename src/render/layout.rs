@@ -86,10 +86,14 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
             if view.screen == Screen::Town {
                 backdrop(w, scene, buf);
                 screens::town_scene(w, hero, scene, buf, m == Mode::Full);
-            } else if m == Mode::Full {
-                full_scene(w, scene, buf);
             } else {
-                compact_scene(w, scene, buf);
+                if m == Mode::Full {
+                    full_scene(w, scene, buf);
+                } else {
+                    compact_scene(w, scene, buf);
+                }
+                // Last, so a hero's ❗ or a float never cuts through it.
+                banner(w, scene, buf);
             }
             for (i, h) in w.heroes.iter().take(MAX_DRAWN).enumerate() {
                 footer_row(h, area, buf, scene.bottom() + i as u16, i == view.selected);
@@ -398,7 +402,6 @@ fn plus_n(w: &World, scene: Rect, buf: &mut Buffer, x: u16, drawn: usize) {
 
 fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
-    banner(w, scene, buf);
     const STEP: u16 = 17;
     let enemy_zone = 28;
     let slots = (scene.width.saturating_sub(enemy_zone + 1) / STEP).clamp(1, MAX_DRAWN as u16);
@@ -613,7 +616,6 @@ fn slimes(w: &World, scene: Rect, buf: &mut Buffer, right: i32, n: i32, hit: boo
 
 fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
-    banner(w, scene, buf);
     const STEP: u16 = 10;
     let slots = (scene.width.saturating_sub(14) / STEP).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);

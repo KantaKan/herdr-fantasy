@@ -224,6 +224,45 @@ pub fn character(w: &World, hero: Option<&Hero>, area: Rect, buf: &mut Buffer) {
         put(buf, area, tx, y, &line, 's', false);
         y += 1;
     }
+    use crate::game::badges::{BADGES, by_id};
+    y += 1;
+    let x = put(buf, area, tx, y, "Badges", 'w', true);
+    put(
+        buf,
+        area,
+        x + 1,
+        y,
+        &format!("{}/{}", l.badges.len(), BADGES.len()),
+        's',
+        false,
+    );
+    y += 1;
+    let mut x = tx;
+    for b in l.badges.iter().filter_map(|id| by_id(id)) {
+        if x > tx && x + b.name.len() as u16 + 3 > area.right() {
+            x = tx;
+            y += 1;
+        }
+        x = put(buf, area, x, y, &format!("🏆{} ", b.name), 'y', false) + 1;
+    }
+    if !l.badges.is_empty() {
+        y += 1;
+    }
+    if let Some(next) = BADGES
+        .iter()
+        .find(|b| !l.badges.iter().any(|id| id == b.id))
+    {
+        put(
+            buf,
+            area,
+            tx,
+            y,
+            &format!("Next: {} — {}", next.name, next.how),
+            'S',
+            false,
+        );
+        y += 1;
+    }
     let gear = crate::game::loot::equipped(&l.loot);
     if !gear.is_empty() {
         y += 1;

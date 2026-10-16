@@ -46,6 +46,11 @@ pub struct Lifetime {
     pub bonus: [u32; 5],
     /// Boss drops (M11); the best per slot is equipped.
     pub loot: Vec<super::loot::Item>,
+    /// Boss wins after 3+ failures, and `git push --force` runs (badges, M12).
+    pub comebacks: u32,
+    pub force_pushes: u32,
+    /// Unlocked badge ids (M12).
+    pub badges: Vec<String>,
 }
 
 impl Lifetime {

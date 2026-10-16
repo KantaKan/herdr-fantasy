@@ -443,6 +443,12 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
 - Slots: weapon (+STR), armor (+VIT), charm (+INT, DEX or LUK). Name = material (by rarity) + piece + the boss's suffix, e.g. "Steel Sword of Green Tests".
 - All drops are kept in `party.json` (`loot`); the best per slot (rarity, then bonus) is equipped and adds to its stat. A drop shows "<hero> found <item>!" in the headline banner for 3 s and is logged; the character sheet lists equipped gear.
 
+### 7.6 Badges (M12)
+- 16 badges in `game/badges.rs`, each a check over the hero's lifetime counters and level: First Blood, Flawless, Never Give Up (a win after 3+ fails), On a Roll (5-win streak), Boss Hunter (10 wins), Legend (100), Treasure Hunter (an epic item), Shadow Lord (10 Summons), Bookworm (100 reads), Blacksmith (100 edits), Shell Shocked (100 shell commands), Well Rested (5 rests), Adventurer (50 quests), Saga (chapter 10), Veteran (level 10), Force Pusher.
+- Checked every tick; unlocked ids are saved in `party.json` (`badges`), next to the new counters `comebacks` and `force_pushes`. An unlock shows "🏆 <hero>: <badge>!" in the headline banner; several at once (a veteran's first load) show "🏆 <hero> earned N badges!".
+- Headline banners queue: one shows for 3 s, then the next. The banner is drawn last, over the scene.
+- Character sheet: badge count, unlocked names, and the next one to earn with its hint.
+
 ### 7.4 Stamina (context window) — "what happens when context is full"
 - `STA% = 100 - context_pct`, where `context_pct = current_context_tokens / context_window_size`.
 - `context_window_size`: config map by model id, default 200,000; if usage exceeds the configured size, grow the assumed size to the next known tier (200k → 1M) instead of showing > 100%.

@@ -1,13 +1,13 @@
 //! The game state the renderer draws. Changes enter through `GameEvent` (demo, and later
 //! transcripts) or `party::sync` (live herdr agents), so every source drives the same code.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::boss::{self, BossKind, Tier};
 use super::duck::{self, Quip};
 use super::hero::{Action, Class, Hero, QuestDone, Seat, Status};
-use super::loot;
 use super::town::Town;
+use super::{badges, loot};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameEvent {
@@ -125,6 +125,15 @@ impl Boss {
     }
 }
 
+/// Show `text` in the headline banner now, or after the ones already waiting.
+fn announce(now: &mut Option<(String, u64)>, queue: &mut VecDeque<String>, text: String) {
+    if now.is_none() {
+        *now = Some((text, BANNER_MS));
+    } else if !queue.contains(&text) {
+        queue.push_back(text);
+    }
+}
+
 /// A quest that just ended, waiting to be written to the quest log.
 #[derive(Debug, Clone)]
 pub struct Finished {
@@ -183,6 +192,8 @@ pub struct World {
     pub toasts: Vec<String>,
     /// Big banner across the top (text, ms left): "Chapter 3 · New Run", a loot drop.
     pub headline: Option<(String, u64)>,
+    /// Banners waiting for the current one to finish.
+    pub headlines: VecDeque<String>,
     /// Config `reduced_motion`: no dashes, hops, sway, or shake.
     pub reduced_motion: bool,
     /// Key of the repo shown in the top bar (most heroes).
@@ -211,6 +222,7 @@ impl World {
             save_now: false,
             toasts: Vec::new(),
             headline: None,
+            headlines: VecDeque::new(),
             reduced_motion: false,
             repo_key: DEMO_REPO.into(),
             towns: HashMap::new(),
@@ -325,10 +337,13 @@ impl World {
                     if b.fails == 0 {
                         h.life.first_tries += 1;
                     }
+                    if b.fails >= 3 {
+                        h.life.comebacks += 1;
+                    }
                     if let Some(item) = loot::roll(&h.name, h.life.bosses_won, b.id, b.tier) {
                         tracing::info!("{} found {}", h.name, item.name);
-                        self.headline =
-                            Some((format!("{} found {}!", h.name, item.name), BANNER_MS));
+                        let text = format!("{} found {}!", h.name, item.name);
+                        announce(&mut self.headline, &mut self.headlines, text);
                         h.life.loot.push(item);
                         self.save_now = true;
                     }
@@ -390,8 +405,8 @@ impl World {
                         });
                     }
                     h.new_run();
-                    let text = format!("Chapter {} · New Run", h.life.chapters + 1);
-                    self.headline = Some((format!("{} — {text}", h.name), BANNER_MS));
+                    let text = format!("{} — Chapter {} · New Run", h.name, h.life.chapters + 1);
+                    announce(&mut self.headline, &mut self.headlines, text);
                     self.save_now = true;
                 }
             }
@@ -403,8 +418,23 @@ impl World {
         if let Some((_, left)) = &mut self.headline {
             *left = left.saturating_sub(dt);
             if *left == 0 {
-                self.headline = None;
+                self.headline = self.headlines.pop_front().map(|t| (t, BANNER_MS));
             }
+        }
+        for h in &mut self.heroes {
+            let earned = badges::newly_earned(&h.life, h.level);
+            let Some(last) = earned.last() else { continue };
+            tracing::info!("{} earned {}", h.name, last.name);
+            // A veteran's first load can earn many at once: one banner, not sixteen.
+            let text = match earned.len() {
+                1 => format!("🏆 {}: {}!", h.name, last.name),
+                n => format!("🏆 {} earned {n} badges!", h.name),
+            };
+            h.life
+                .badges
+                .extend(earned.iter().map(|b| b.id.to_string()));
+            announce(&mut self.headline, &mut self.headlines, text);
+            self.save_now = true;
         }
         self.duck.update(dt);
         for h in &self.heroes {
@@ -693,6 +723,26 @@ mod tests {
         let item = &h.life.loot[0];
         assert!(w.headline.as_ref().unwrap().0.contains(&item.name));
         assert_eq!(h.life.stats()[item.stat], before[item.stat] + item.bonus);
+    }
+
+    #[test]
+    fn badges_unlock_once_and_queue_behind_the_loot_banner() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        fight(&mut w, a, false);
+        w.update(1);
+        assert!(w.headline.as_ref().unwrap().0.contains("found"));
+        w.update(BANNER_MS);
+        assert_eq!(w.headline.as_ref().unwrap().0, "🏆 A earned 2 badges!");
+        assert_eq!(w.heroes[a].life.badges, ["first_blood", "flawless"]);
+        w.update(BANNER_MS);
+        assert!(w.headline.is_none(), "nothing earned twice");
+        for _ in 0..3 {
+            fight(&mut w, a, true);
+        }
+        fight(&mut w, a, false);
+        w.update(1);
+        assert!(w.heroes[a].life.badges.contains(&"never_give_up".into()));
     }
 
     #[test]
