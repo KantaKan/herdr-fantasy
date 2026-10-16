@@ -38,5 +38,5 @@ id = "ask"
 title = "An agent needs you"
 placement = "popup"
 width = "70%"
-height = 18
+height = 20
 command = ["./target/release/herdr-fantasy", "ask"]

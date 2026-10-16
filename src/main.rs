@@ -62,7 +62,7 @@ fn main() -> anyhow::Result<()> {
         tracing::warn!("config: {w}");
     }
 
-    let name = match cli.command {
+    let result = match cli.command {
         Command::Stage {
             demo: true,
             scenario,
@@ -78,13 +78,17 @@ fn main() -> anyhow::Result<()> {
             return render::run_demo(&scenario, seed, speed, &config);
         }
         Command::Stage { .. } => return render::run_live(&config),
-        Command::Ask { .. } => "ask",
-        Command::Autostart => "autostart",
-        Command::OpenAsk => "open-ask",
-        Command::ToggleStage => "toggle-stage",
+        Command::Ask { demo } => return render::ask::run(&config, demo),
+        // herdr runs these as hooks/actions: log failures, never fail the hook.
+        Command::Autostart => herdr::actions::autostart(config.auto_open),
+        Command::OpenAsk => herdr::actions::open_ask(),
+        Command::ToggleStage => herdr::actions::toggle_stage(),
         Command::Doctor => return doctor(&config),
     };
-    eprintln!("{name}: not implemented");
+    if let Err(e) = result {
+        tracing::warn!("{e:#}");
+        eprintln!("{e:#}");
+    }
     Ok(())
 }
 

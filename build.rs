@@ -137,7 +137,7 @@ fn main() {
     for path in entries {
         let stem = path.file_stem().unwrap().to_str().unwrap().to_string();
         let (frames, tags) = parse(&stem, &fs::read_to_string(&path).unwrap());
-        if stem == "hero" || stem == "face" {
+        if stem == "hero" || stem == "face" || stem == "portrait" {
             for (class, m, d, a) in CLASSES {
                 let name = format!("{stem}_{class}");
                 let subst = move |c| match c {

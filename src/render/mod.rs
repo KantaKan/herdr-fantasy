@@ -1,6 +1,7 @@
 //! Frame loop: adaptive FPS, redraw only when the frame changed, nothing at all while
 //! the stage is hidden (SPEC §8.5).
 
+pub mod ask;
 pub mod halfblock;
 pub mod layout;
 pub mod sprites;
@@ -12,12 +13,12 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use crate::config::Config;
+use crate::config::{Config, NotifySound};
 use crate::game::demo;
 use crate::game::party;
 use crate::game::persist::{QuestRecord, Store};
 use crate::game::world::World;
-use crate::herdr::cache::{self, Update};
+use crate::herdr::cache::{self, Cmd, Update};
 
 const ACTIVE_FPS: u64 = 15;
 const IDLE_FPS: u64 = 4;
@@ -46,7 +47,7 @@ pub fn run_demo(scenario: &str, seed: u64, speed: f32, config: &Config) -> anyho
 /// The real stage: party from herdr, progress saved per repo.
 pub fn run_live(config: &Config) -> anyhow::Result<()> {
     let me = cache::Me::from_env();
-    let rx = cache::spawn(me.clone(), config.show_all_workspaces || me.is_none());
+    let (rx, cmds) = cache::spawn(me.clone(), config.show_all_workspaces || me.is_none());
     let root = crate::logging::state_dir()
         .ok_or_else(|| anyhow::anyhow!("no state directory"))?
         .join("state");
@@ -58,7 +59,7 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
     let mut last_save = Instant::now();
     let result = with_terminal(|t| {
         frame_loop(t, &mut world, false, |w, real_ms| {
-            visible = drain(&rx, w, config, &mut store, visible);
+            visible = drain(&rx, &cmds, w, config, &mut store, visible);
             w.update(real_ms as u64);
             persist(w, &mut store, &mut last_save);
             visible
@@ -74,6 +75,7 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
 /// Apply every pending herdr update; returns the latest visibility.
 fn drain(
     rx: &Receiver<Update>,
+    cmds: &std::sync::mpsc::Sender<Cmd>,
     w: &mut World,
     cfg: &Config,
     store: &mut Store,
@@ -83,7 +85,19 @@ fn drain(
         match rx.try_recv() {
             Ok(Update::Party { agents, visible: v }) => {
                 w.banner = None;
-                party::sync(w, &agents, &cfg.classes, store);
+                for name in party::sync(w, &agents, &cfg.classes, store) {
+                    if cfg.notify_on_blocked {
+                        let _ = cmds.send(Cmd::Notify {
+                            title: format!("{name} needs you"),
+                            body: "Press prefix+a to talk".into(),
+                            sound: match cfg.notify_sound {
+                                NotifySound::None => "none",
+                                NotifySound::Done => "done",
+                                NotifySound::Request => "request",
+                            },
+                        });
+                    }
+                }
                 visible = v;
             }
             Ok(Update::Lost) => w.banner = Some("reconnecting to herdr…".into()),
@@ -292,7 +306,21 @@ mod preview {
             }
             let area = Rect::new(0, 0, w, h);
             let mut buf = Buffer::empty(area);
-            layout::render(&world, area, &mut buf);
+            if std::env::var("PREVIEW_ASK").is_ok() {
+                let mut a = ask::Ask::new(vec![ask::Target {
+                    name: "Claude".into(),
+                    class: crate::game::hero::Class::Knight,
+                    pane_id: "p".into(),
+                    text: "Do you want to make this edit to src/auth.rs?
+1. Yes
+2. No"
+                        .into(),
+                }]);
+                a.tick(tick as u64 * 66);
+                ask::draw(&a, area, &mut buf);
+            } else {
+                layout::render(&world, area, &mut buf);
+            }
             let s = 5;
             let mut img = image::RgbImage::new(w as u32 * s, h as u32 * 2 * s);
             for (i, c) in buf.content.iter().enumerate() {

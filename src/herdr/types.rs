@@ -1,5 +1,7 @@
 //! The slice of herdr's API we read (herdr 0.9.3 schema). Unknown fields are ignored.
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -34,20 +36,45 @@ pub struct AgentInfo {
     #[serde(default)]
     pub focused: bool,
     pub agent_session: Option<AgentSession>,
+    /// Bumps on every status change; the highest blocked one is the most recent.
+    #[serde(default)]
+    pub state_change_seq: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct PaneInfo {
+    pub pane_id: String,
+    pub workspace_id: String,
+    pub tab_id: String,
+    /// Plugin panes get their manifest title here.
+    pub label: Option<String>,
+    #[serde(default)]
+    pub tokens: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub struct Area {
+    pub height: u16,
+    pub width: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct WorkspaceInfo {
     pub workspace_id: String,
     pub active_tab_id: Option<String>,
+    #[serde(default)]
+    pub number: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct LayoutInfo {
     pub tab_id: String,
+    #[serde(default)]
+    pub workspace_id: String,
     pub focused_pane_id: Option<String>,
     #[serde(default)]
     pub zoomed: bool,
+    pub area: Option<Area>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -59,6 +86,8 @@ pub struct Snapshot {
     pub workspaces: Vec<WorkspaceInfo>,
     #[serde(default)]
     pub layouts: Vec<LayoutInfo>,
+    #[serde(default)]
+    pub panes: Vec<PaneInfo>,
 }
 
 impl Snapshot {
@@ -101,6 +130,8 @@ mod tests {
         assert_eq!(a.agent.as_deref(), Some("claude"));
         assert_eq!(a.agent_session.as_ref().unwrap().kind, "id");
         assert!(s.focused_workspace_id.is_some());
+        assert!(!s.panes.is_empty());
+        assert!(s.layouts.iter().all(|l| l.area.is_some()));
     }
 
     #[test]
@@ -128,11 +159,14 @@ mod tests {
         s.workspaces = vec![WorkspaceInfo {
             workspace_id: "w".into(),
             active_tab_id: Some("t".into()),
+            number: 1,
         }];
         s.layouts = vec![LayoutInfo {
             tab_id: "t".into(),
+            workspace_id: "w".into(),
             focused_pane_id: Some("other".into()),
             zoomed: false,
+            area: None,
         }];
         assert!(s.is_visible("w", "t", "me"));
         assert!(!s.is_visible("w", "t2", "me"));

@@ -38,13 +38,15 @@ pub fn save_hero(h: &Hero, store: &mut Store) {
     }
 }
 
-/// Reconcile the world's heroes with herdr's live agents.
+/// Reconcile the world's heroes with herdr's live agents. Returns the names of heroes
+/// that just went `blocked` (not ones that arrived already blocked).
 pub fn sync(
     w: &mut World,
     agents: &[LiveAgent],
     classes: &BTreeMap<String, String>,
     store: &mut Store,
-) {
+) -> Vec<String> {
+    let mut newly_blocked = Vec::new();
     // Departures: save, close the quest as unfinished, walk off.
     for h in &mut w.heroes {
         let Some(seat) = &h.seat else { continue };
@@ -68,6 +70,7 @@ pub fn sync(
         let here = w.heroes.iter_mut().find(|h| {
             h.leaving_ms.is_none() && h.seat.as_ref().is_some_and(|s| s.pane_id == a.pane_id)
         });
+        let was = here.as_ref().map(|h| h.status);
         let h = match here {
             Some(h) => h,
             None => {
@@ -99,6 +102,9 @@ pub fn sync(
                 w.heroes.last_mut().unwrap()
             }
         };
+        if a.status == Status::Blocked && was.is_some_and(|s| s != Status::Blocked) {
+            newly_blocked.push(h.name.clone());
+        }
         h.set_status(a.status);
         h.focused = a.focused;
         if a.title.is_some() {
@@ -114,6 +120,7 @@ pub fn sync(
     if let Some((name, _)) = counts.iter().max_by_key(|(_, n)| **n) {
         w.repo = name.to_string();
     }
+    newly_blocked
 }
 
 #[cfg(test)]
@@ -239,6 +246,39 @@ mod tests {
         sync(&mut w, &[], &classes(), &mut s);
         assert_eq!(w.finished.len(), 1);
         assert_eq!(w.finished[0].quest.result, "unfinished");
+    }
+
+    #[test]
+    fn only_transitions_into_blocked_notify() {
+        let mut w = World::new("", "");
+        let mut s = store("notify");
+        let arrive = sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Blocked)],
+            &classes(),
+            &mut s,
+        );
+        assert!(arrive.is_empty(), "already blocked on arrival: no toast");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        let blocked = sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Blocked)],
+            &classes(),
+            &mut s,
+        );
+        assert_eq!(blocked, ["Claude"]);
+        let again = sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Blocked)],
+            &classes(),
+            &mut s,
+        );
+        assert!(again.is_empty(), "one toast per transition");
     }
 
     #[test]

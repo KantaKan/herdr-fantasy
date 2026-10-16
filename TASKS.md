@@ -46,12 +46,13 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** inside herdr with real Claude Code + Codex panes, `herdr plugin pane open --plugin kantakan.herdr-fantasy --entrypoint stage` shows both heroes and their states change within 300 ms of herdr's sidebar; killing/restarting the stage keeps levels. (2026-10-16: verified with a real Claude pane via `herdr plugin pane open … --target-pane wC:p1 --direction down --no-focus`; XP saved on Ctrl-C and reloaded. Codex not yet tried.)
 
 ## M3 — Auto-open + notifications + ask popup
-- [ ] `autostart`: open stage per SPEC §5.1 without stealing focus, never duplicate. Resolve SPEC §15 Q1–Q3 and update SPEC.
-- [ ] `toggle-stage` action.
-- [ ] `notification.show` once per blocked transition (respect config).
-- [ ] `ask` popup: JRPG box, portrait talk animation, typewriter text from `pane.read --source detection`, options Go/Next/Close, `agent.focus` on Go. Never sends keys to agents.
-- [ ] `open-ask` action opens the popup for the most recently blocked hero.
-- [ ] README section: keybinding snippet `prefix+a` → `kantakan.herdr-fantasy.open-ask`.
+- [x] `autostart`: open stage per SPEC §5.1 without stealing focus, never duplicate. Q1–Q2 resolved in SPEC §15; Q3 (server restart) still open.
+- [x] `toggle-stage` action.
+- [x] `notification.show` once per blocked transition (respect config).
+- [x] `ask` popup: JRPG box, portrait talk animation, typewriter text from `pane.read --source detection`, options Go/Next/Close, `agent.focus` on Go. Never sends keys to agents.
+- [x] `open-ask` action opens the popup for the most recently blocked hero.
+- [x] README section: keybinding snippet `prefix+a` → `kantakan.herdr-fantasy.open-ask`.
+- [ ] **Manual check left for KantaKan:** restart herdr (stage should appear in every workspace exactly once), let an agent block (❗ + one toast), press `prefix+a` (after adding the README snippet), `Go` focuses it, `Esc` closes.
   **Done when:** opening herdr shows the stage automatically in every workspace; a blocked agent shows ❗ + one toast; `prefix+a` opens the dialogue and Go focuses that pane; `Esc` always closes.
 
 ## M4 — Claude transcript reader (rich events) — ADR-0001

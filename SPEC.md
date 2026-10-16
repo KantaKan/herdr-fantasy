@@ -50,11 +50,12 @@ schema with `herdr api schema --json` at implementation time and fix this sectio
 - Pane placements: `overlay`, `popup`, `split`, `tab`, `zoomed`. Popups capture **all** input until they exit.
 - Injected env: `HERDR_SOCKET_PATH`, `HERDR_BIN_PATH`, `HERDR_PLUGIN_ID`, `HERDR_PLUGIN_ROOT`, `HERDR_PLUGIN_CONFIG_DIR`, `HERDR_PLUGIN_STATE_DIR`, `HERDR_PLUGIN_CONTEXT_JSON`, and when available `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`, `HERDR_PANE_ID`.
 - Startup hooks are one-shot (not daemons). They run after session restore when the API socket is ready.
-- Plugins cannot register keybindings; users add `[[keys.command]] type = "plugin_action"` to their herdr config.
+- Plugins cannot register keybindings; users add `[[keys.command]]` with `key = "prefix+a"`, `type = "plugin_action"`, `command = "kantakan.herdr-fantasy.open-ask"` (validated with `herdr config check`; `action =` is rejected).
+- `plugin.pane.open`: split/zoomed panes take `target_pane_id` and reject `workspace_id`; overlay/popup panes open over the active pane and reject `workspace_id` too. A popup open returns only `ok` (no pane id). `pane.resize {direction, amount}` moves the split ratio by `amount` (0.25 on a fresh 50/50 split → 75/25).
 - Marketplace: public GitHub repo with topic `herdr-plugin` and a parsable manifest.
 
 ### 3.2 herdr socket API
-- Newline-delimited JSON over a Unix-domain socket (`~/.config/herdr/herdr.sock`; always prefer `$HERDR_SOCKET_PATH`). **On Windows it is a named pipe**: herdr serves `\\.\pipe\<socket path>` (e.g. `\\.\pipe\C:\Users\me\AppData\Roaming\herdr\herdr.sock`), and the file at the socket path only holds `pid:nonce`. Open the pipe like a file (`OpenOptions` read+write; retry on `ERROR_PIPE_BUSY`). Verified on 0.9.3.
+- Newline-delimited JSON over a Unix-domain socket (`~/.config/herdr/herdr.sock`; always prefer `$HERDR_SOCKET_PATH`). **On Windows it is a named pipe**: herdr serves `\\.\pipe\<socket path>` (e.g. `\\.\pipe\C:\Users\me\AppData\Roaming\herdr\herdr.sock`), and the file at the socket path only holds `pid:nonce`. Open the pipe like a file (`OpenOptions` read+write; retry on `ERROR_PIPE_BUSY`). **The pipe closes after each response**, so the client opens one connection per request (on every platform; local connects are cheap). Verified on 0.9.3.
 - Request: `{"id":"...","method":"...","params":{...}}`. Response echoes `id`.
 - Key methods: `agent.list`, `agent.get`, `agent.focus`, `pane.read`, `pane.list`, `pane.report_metadata`, `notification.show`, `events.subscribe`, `session.snapshot`, `plugin.pane.open`.
 - Agent status values: `idle`, `working`, `blocked`, `done`, `unknown` (`done` = idle and not yet seen).
@@ -195,7 +196,7 @@ id = "ask"
 title = "An agent needs you"
 placement = "popup"
 width = "70%"
-height = 18
+height = 20
 command = ["./target/release/herdr-fantasy", "ask"]
 ```
 
@@ -556,8 +557,8 @@ state/
 
 ## 15. Open questions to verify during implementation
 1. ~~CLI flags for `herdr plugin pane open`~~ Resolved: `--plugin`, `--entrypoint`, `--placement overlay|split|tab|zoomed`, `--workspace`, `--target-pane`, `--direction right|down`, `--cwd`, `--env`, `--focus` / `--no-focus` — **no `--ratio`** (it opened a 50/50 split; resize afterwards with `herdr pane resize` / `layout.set_split_ratio` at M3). `herdr pane split` does have `--ratio` (sizes the new pane).
-2. How to detect an existing stage pane (plugin ownership in `pane.list`?).
-3. Behavior of plugin panes after herdr server restart / live handoff.
+2. ~~Detect an existing stage pane~~ Resolved: pane info has no plugin id, only the manifest title as `label` (users can rename it). The stage tags its own pane with metadata token `hf_stage=1` (`pane.report_metadata`), which shows in snapshot `panes[].tokens`; autostart/toggle treat a pane with that token **or** the label as the stage.
+3. Behavior of plugin panes after herdr server restart / live handoff. (Not tested yet: it means restarting the user's server.) Also seen once: a fresh stage landed at 59/41 instead of 75/25; five retries all gave 74/26.
 4. ~~Event stream vs polling~~ Resolved: status-changed subscriptions are per pane; v1 polls `session.snapshot` (§3.2).
 5. Kitty graphics probe results inside herdr panes, locally and over SSH.
 6. Claude transcript field names (tool_use, tool_result `is_error`, usage, compaction marker, subagent tool name `Task` vs `Agent`), and whether a non-zero exit sets `is_error` for Bash and PowerShell.

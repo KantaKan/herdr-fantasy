@@ -8,11 +8,12 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::Duration;
 
 use serde_json::json;
 
+use super::actions;
 use super::client::Client;
 use super::types::{AgentInfo, AgentStatus, Snapshot};
 use crate::game::hero::Status;
@@ -52,6 +53,16 @@ pub enum Update {
     },
     /// Connection to herdr lost; the thread keeps retrying.
     Lost,
+}
+
+/// Requests from the stage, executed on the herdr thread.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Cmd {
+    Notify {
+        title: String,
+        body: String,
+        sound: &'static str,
+    },
 }
 
 fn status(s: AgentStatus) -> Status {
@@ -105,16 +116,17 @@ pub fn party(
     (agents, visible)
 }
 
-pub fn spawn(me: Option<Me>, all_workspaces: bool) -> Receiver<Update> {
+pub fn spawn(me: Option<Me>, all_workspaces: bool) -> (Receiver<Update>, Sender<Cmd>) {
     let (tx, rx) = mpsc::channel();
+    let (cmd_tx, cmd_rx) = mpsc::channel();
     std::thread::Builder::new()
         .name("herdr".into())
-        .spawn(move || run(tx, me, all_workspaces))
+        .spawn(move || run(tx, cmd_rx, me, all_workspaces))
         .expect("spawn herdr thread");
-    rx
+    (rx, cmd_tx)
 }
 
-fn run(tx: Sender<Update>, me: Option<Me>, all_workspaces: bool) {
+fn run(tx: Sender<Update>, cmds: Receiver<Cmd>, me: Option<Me>, all_workspaces: bool) {
     let mut repos: HashMap<String, Repo> = HashMap::new();
     let mut repo_of = |cwd: &str| {
         repos
@@ -145,7 +157,25 @@ fn run(tx: Sender<Update>, me: Option<Me>, all_workspaces: bool) {
             }
         };
         backoff = BACKOFF_MIN;
+        if let Some(m) = &me {
+            actions::tag_stage(&mut client, &m.pane);
+        }
         loop {
+            loop {
+                match cmds.try_recv() {
+                    Ok(Cmd::Notify { title, body, sound }) => {
+                        let r = client.request(
+                            "notification.show",
+                            json!({ "title": title, "body": body, "sound": sound }),
+                        );
+                        if let Err(e) = r {
+                            tracing::warn!("notification: {e:#}");
+                        }
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => return,
+                }
+            }
             let snap = client
                 .request("session.snapshot", json!({}))
                 .and_then(|mut v| Ok(serde_json::from_value::<Snapshot>(v["snapshot"].take())?));

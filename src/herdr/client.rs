@@ -53,47 +53,48 @@ pub fn socket_path() -> PathBuf {
     }
 }
 
+/// One connection per request: herdr's Windows named pipe closes after each response,
+/// and a fresh local connection is cheap on every platform.
 pub struct Client {
-    reader: BufReader<Stream>,
-    writer: Stream,
+    path: PathBuf,
+    /// The connection opened by `connect`, used by the first request.
+    first: Option<Stream>,
     next_id: u64,
 }
 
 impl Client {
+    /// Fails fast if herdr isn't reachable.
     pub fn connect() -> anyhow::Result<Self> {
         let path = socket_path();
         let s = open(&path).with_context(|| format!("connect {}", path.display()))?;
         Ok(Client {
-            reader: BufReader::new(s.try_clone()?),
-            writer: s,
+            path,
+            first: Some(s),
             next_id: 0,
         })
     }
 
-    fn send(&mut self, method: &str, params: Value) -> anyhow::Result<String> {
+    /// One request → its `result`. A herdr error response becomes `Err`.
+    pub fn request(&mut self, method: &str, params: Value) -> anyhow::Result<Value> {
+        let s = match self.first.take() {
+            Some(s) => s,
+            None => open(&self.path).with_context(|| format!("connect {}", self.path.display()))?,
+        };
         self.next_id += 1;
         let id = format!("hf-{}", self.next_id);
         let mut line = json!({ "id": id, "method": method, "params": params }).to_string();
         line.push('\n');
-        self.writer.write_all(line.as_bytes())?;
-        Ok(id)
-    }
-
-    fn read_line(&mut self) -> anyhow::Result<Value> {
-        let mut line = String::new();
-        if self.reader.read_line(&mut line)? == 0 {
-            bail!("herdr closed the connection");
-        }
-        Ok(serde_json::from_str(&line)?)
-    }
-
-    /// One request → its `result`. A herdr error response becomes `Err`.
-    pub fn request(&mut self, method: &str, params: Value) -> anyhow::Result<Value> {
-        let id = self.send(method, params)?;
+        let mut writer = s.try_clone()?;
+        writer.write_all(line.as_bytes())?;
+        let mut reader = BufReader::new(s);
         loop {
-            let mut msg = self.read_line()?;
+            let mut buf = String::new();
+            if reader.read_line(&mut buf)? == 0 {
+                bail!("herdr closed the connection");
+            }
+            let mut msg: Value = serde_json::from_str(&buf)?;
             if msg["id"] != id {
-                continue; // not ours (e.g. a stray event); skip
+                continue; // not ours; skip
             }
             if let Some(err) = msg.get("error") {
                 bail!("herdr {method}: {err}");
