@@ -44,6 +44,8 @@ pub struct Lifetime {
     pub shadows: u32,
     /// Level-up points, one per level, each added to the top stat at the time.
     pub bonus: [u32; 5],
+    /// Boss drops (M11); the best per slot is equipped.
+    pub loot: Vec<super::loot::Item>,
 }
 
 impl Lifetime {
@@ -56,7 +58,8 @@ impl Lifetime {
             self.rests,
             self.first_tries,
         ];
-        std::array::from_fn(|i| base[i] + self.bonus[i])
+        let gear = super::loot::gear_bonus(&self.loot);
+        std::array::from_fn(|i| base[i] + self.bonus[i] + gear[i])
     }
 }
 

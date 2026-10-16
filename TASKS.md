@@ -112,6 +112,32 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 
 ---
 
+## M11 — Loot
+- [x] `game/loot.rs` (pure): a boss victory may drop an item (always on a hero's first win, else ~1 in 3, better odds for bigger bosses). Name = material + piece + boss-themed suffix ("Sword of Green Tests", "Cursed Cape of Merge Conflicts"), rarity common/rare/epic, one stat bonus. Seeded by hero + win count, so the same win always drops the same thing.
+- [x] Saved in the hero's progress; the best item per slot (weapon, armor, charm) is equipped and adds to its stat.
+- [x] Float + log line on a drop; the character sheet lists the equipped gear.
+  **Done when:** beating bosses drops items that survive a restart and raise the stats on the character sheet. (2026-10-16: `first_boss_win_drops_loot_that_raises_a_stat`, the persist round trip, and the demo — "Claude found Rusty Shield of the Early Sahur!", Gear on the sheet. The drop shows in the headline banner rather than a float, so it doesn't fight the +XP float.)
+
+## M12 — Achievements
+- [ ] `game/badges.rs` (pure): a table of badges, each a check over the hero's lifetime counters (First Try, Persistent, Force Pusher, 10/100 Bosses, Shadow Lord, Bookworm, Blacksmith, Well Rested, Comeback, Chapter 10, Level 10 …).
+- [ ] Unlocks checked after each event; a "🏆 <badge>" banner + float; saved with progress; badges section on the character sheet.
+  **Done when:** reaching a badge's condition shows the banner once, and it stays unlocked after a restart.
+
+## M13 — Party combos + daily quest
+- [ ] A second hero running a boss command while a boss is up **joins the fight**: team attack animation, both get the victory XP plus a combo bonus.
+- [ ] Daily quest per hero, rolled from the UTC date ("Win 5 boss fights", "Finish 3 quests", "Raise 2 shadows" …): progress on the character sheet, bonus XP when done.
+  **Done when:** two heroes beating one boss both get XP with the combo float; a daily quest completes and pays once per day.
+
+## M14 — Pets + hero skins
+- [ ] Pets (`[pets] claude = "cat"`; cat, dog, dragon, owl): a small sprite that follows its hero, hops when it hops, sits at camp; grows up at Lv 5 and Lv 15.
+- [ ] Skins: costume recolors unlocked at Lv 5 / 10 / 20 (`skin = "auto"` picks the best unlocked).
+  **Done when:** a configured pet follows its hero in the stage and the GIF; a Lv 10 hero shows its unlocked skin.
+
+## M15 — Weekly recap + big hero mode
+- [ ] `w` opens a weekly recap from the quest log: quests, XP, bosses won/lost, best streak, busiest repo, per-day bars.
+- [ ] Tall stage panes (≥ 30 rows) draw heroes, bosses and Summons at 2× size.
+  **Done when:** the recap matches the quest log, and a tall pane shows big sprites without breaking the other layouts or the CPU budget.
+
 ## Manual QA checklist (run before each release)
 - [ ] Windows Terminal + native herdr: halfblock, auto-open, ask popup, transcript events.
 - [ ] Ghostty + herdr local: Kitty sprites, auto-open, ask popup, transcript events.

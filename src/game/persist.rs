@@ -238,6 +238,10 @@ mod tests {
         };
         p.life.quests = 3;
         p.life.bonus[1] = 2;
+        p.life.loot.push(
+            super::super::loot::roll("Claude", 1, "lint_imp", super::super::boss::Tier::Big)
+                .unwrap(),
+        );
         s.put("repo1", "claude#0", p.clone());
         assert!(s.is_dirty());
         s.flush();

@@ -224,6 +224,26 @@ pub fn character(w: &World, hero: Option<&Hero>, area: Rect, buf: &mut Buffer) {
         put(buf, area, tx, y, &line, 's', false);
         y += 1;
     }
+    let gear = crate::game::loot::equipped(&l.loot);
+    if !gear.is_empty() {
+        y += 1;
+        put(buf, area, tx, y, "Gear", 'w', true);
+        y += 1;
+    }
+    for item in gear {
+        let stat = crate::game::loot::STAT_NAMES[item.stat];
+        let x = put(buf, area, tx, y, &item.name, item.rarity.color(), false);
+        put(
+            buf,
+            area,
+            x + 1,
+            y,
+            &format!("+{} {stat}", item.bonus),
+            'G',
+            false,
+        );
+        y += 1;
+    }
 }
 
 /// Keys (`?`).

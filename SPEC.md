@@ -437,6 +437,12 @@ Anti-farm:
 
 Each level-up adds 1 bonus point to the hero's current top stat (ties → the first in STR, INT, DEX, VIT, LUK order). Lifetime counters (quests, chapters, edits, reads, shells, rests, first tries, bosses won/lost, bonus points) are saved in `party.json` next to level and XP; old files without them still load.
 
+### 7.5 Loot (M11)
+- Every boss victory rolls a drop (`game/loot.rs`), seeded by hero name + win count so the same win always drops the same item. A hero's first win always drops; after that 1 in 4 (little boss), 1 in 3 (normal), 1 in 2 (big).
+- Rarity: epic 3% / 6% / 12% by boss size, rare 25%, else common. Bonus: common +1, rare +2–3, epic +4–6.
+- Slots: weapon (+STR), armor (+VIT), charm (+INT, DEX or LUK). Name = material (by rarity) + piece + the boss's suffix, e.g. "Steel Sword of Green Tests".
+- All drops are kept in `party.json` (`loot`); the best per slot (rarity, then bonus) is equipped and adds to its stat. A drop shows "<hero> found <item>!" in the headline banner for 3 s and is logged; the character sheet lists equipped gear.
+
 ### 7.4 Stamina (context window) — "what happens when context is full"
 - `STA% = 100 - context_pct`, where `context_pct = current_context_tokens / context_window_size`.
 - `context_window_size`: config map by model id, default 200,000; if usage exceeds the configured size, grow the assumed size to the next known tier (200k → 1M) instead of showing > 100%.

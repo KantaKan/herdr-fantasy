@@ -291,7 +291,7 @@ fn text_on(buf: &mut Buffer, x: u16, y: u16, max_x: u16, s: &str, fg: char) {
 
 /// "Chapter N · New Run" across the top of the scene.
 fn banner(w: &World, scene: Rect, buf: &mut Buffer) {
-    let Some((text, _)) = &w.chapter_banner else {
+    let Some((text, _)) = &w.headline else {
         return;
     };
     let s = format!(" ~ {text} ~ ");

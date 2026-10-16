@@ -2,6 +2,7 @@ pub mod boss;
 pub mod demo;
 pub mod duck;
 pub mod hero;
+pub mod loot;
 pub mod moves;
 pub mod party;
 pub mod persist;

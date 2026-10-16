@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 use super::boss::{self, BossKind, Tier};
 use super::duck::{self, Quip};
 use super::hero::{Action, Class, Hero, QuestDone, Seat, Status};
+use super::loot;
 use super::town::Town;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -180,8 +181,8 @@ pub struct World {
     pub save_now: bool,
     /// herdr toasts to send (drained by the live loop).
     pub toasts: Vec<String>,
-    /// Big centered banner (text, ms left), e.g. "Chapter 3 · New Run".
-    pub chapter_banner: Option<(String, u64)>,
+    /// Big banner across the top (text, ms left): "Chapter 3 · New Run", a loot drop.
+    pub headline: Option<(String, u64)>,
     /// Config `reduced_motion`: no dashes, hops, sway, or shake.
     pub reduced_motion: bool,
     /// Key of the repo shown in the top bar (most heroes).
@@ -209,7 +210,7 @@ impl World {
             finished: Vec::new(),
             save_now: false,
             toasts: Vec::new(),
-            chapter_banner: None,
+            headline: None,
             reduced_motion: false,
             repo_key: DEMO_REPO.into(),
             towns: HashMap::new(),
@@ -324,6 +325,13 @@ impl World {
                     if b.fails == 0 {
                         h.life.first_tries += 1;
                     }
+                    if let Some(item) = loot::roll(&h.name, h.life.bosses_won, b.id, b.tier) {
+                        tracing::info!("{} found {}", h.name, item.name);
+                        self.headline =
+                            Some((format!("{} found {}!", h.name, item.name), BANNER_MS));
+                        h.life.loot.push(item);
+                        self.save_now = true;
+                    }
                     h.say(format!("+{xp} XP{bonus}"), 'y');
                     if h.gain_xp(xp) > 0 {
                         self.save_now = true;
@@ -383,7 +391,7 @@ impl World {
                     }
                     h.new_run();
                     let text = format!("Chapter {} · New Run", h.life.chapters + 1);
-                    self.chapter_banner = Some((format!("{} — {text}", h.name), BANNER_MS));
+                    self.headline = Some((format!("{} — {text}", h.name), BANNER_MS));
                     self.save_now = true;
                 }
             }
@@ -392,10 +400,10 @@ impl World {
 
     pub fn update(&mut self, dt: u64) {
         self.clock_ms += dt;
-        if let Some((_, left)) = &mut self.chapter_banner {
+        if let Some((_, left)) = &mut self.headline {
             *left = left.saturating_sub(dt);
             if *left == 0 {
-                self.chapter_banner = None;
+                self.headline = None;
             }
         }
         self.duck.update(dt);
@@ -455,7 +463,7 @@ impl World {
     /// Anything animating beyond idle breathing? Drives adaptive FPS (SPEC §8.5).
     pub fn is_busy(&self) -> bool {
         self.boss.is_some()
-            || self.chapter_banner.is_some()
+            || self.headline.is_some()
             || self.heroes.iter().any(|h| {
                 h.status != Status::Idle
                     || h.busy()
@@ -598,12 +606,9 @@ mod tests {
         let mut w = World::new("r", "t");
         let a = w.add_hero("A", Class::Knight);
         w.apply(GameEvent::NewRun(a));
-        assert_eq!(
-            w.chapter_banner.as_ref().unwrap().0,
-            "A — Chapter 2 · New Run"
-        );
+        assert_eq!(w.headline.as_ref().unwrap().0, "A — Chapter 2 · New Run");
         w.update(BANNER_MS);
-        assert!(w.chapter_banner.is_none());
+        assert!(w.headline.is_none());
         w.apply(GameEvent::Rest(a, Some(10)));
         assert!(w.is_busy());
         assert_eq!(w.heroes[a].life.rests, 1);
@@ -675,6 +680,19 @@ mod tests {
         fight(&mut w, a, false);
         let l = &w.heroes[a].life;
         assert_eq!((l.bosses_won, l.bosses_lost, l.first_tries), (1, 1, 0));
+    }
+
+    #[test]
+    fn first_boss_win_drops_loot_that_raises_a_stat() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        let before = w.heroes[a].life.stats();
+        fight(&mut w, a, false);
+        let h = &w.heroes[a];
+        assert_eq!(h.life.loot.len(), 1);
+        let item = &h.life.loot[0];
+        assert!(w.headline.as_ref().unwrap().0.contains(&item.name));
+        assert_eq!(h.life.stats()[item.stat], before[item.stat] + item.bonus);
     }
 
     #[test]

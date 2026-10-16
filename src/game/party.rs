@@ -719,7 +719,7 @@ mod tests {
         );
         assert_eq!(w.heroes[0].level, 5, "level kept");
         assert_eq!(w.heroes[0].life.chapters, 1);
-        assert!(w.chapter_banner.is_some());
+        assert!(w.headline.is_some());
     }
 
     #[test]
