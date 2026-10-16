@@ -219,7 +219,7 @@ pub fn character(w: &World, hero: Option<&Hero>, area: Rect, buf: &mut Buffer) {
             "Bosses {} won / {} lost · best streak {}",
             l.bosses_won, l.bosses_lost, l.best_streak
         ),
-        "Shadows raised 0".to_string(),
+        format!("Shadows raised {}", l.shadows),
     ] {
         put(buf, area, tx, y, &line, 's', false);
         y += 1;

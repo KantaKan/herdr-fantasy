@@ -1,0 +1,26 @@
+# tag idle 300
+............
+....kkkk....
+...kyyyyk...
+..kyyyyyyk..
+..kykkkkyk..
+..kooooook..
+..ksoooosk..
+..kskssssk..
+..kssssrsk..
+..kSSSSSSk..
+..kSSSSSSk..
+...kkkkkk...
+
+............
+....kkkk....
+...kyyyyk...
+..kyyyyyyk..
+..kykkkkyk..
+..kooooook..
+..ksoooosk..
+..ksrssssk..
+..kssssksk..
+..kSSSSSSk..
+..kSSSSSSk..
+...kkkkkk...

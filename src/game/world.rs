@@ -4,6 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::boss::{self, BossKind, Tier};
+use super::duck::{self, Quip};
 use super::hero::{Action, Class, Hero, QuestDone, Seat, Status};
 use super::town::Town;
 
@@ -23,6 +24,12 @@ pub enum GameEvent {
     Rest(usize, Option<u8>),
     /// A new session / `/clear`: new Chapter.
     NewRun(usize),
+    /// Hero `i` launched a subagent (tool id, runs in background?).
+    Summon(usize, String, bool),
+    /// That subagent's result came back.
+    Dismiss(usize, String),
+    /// A quip-worthy moment (event, occurrence key).
+    Quip(super::duck::Quip, String),
 }
 
 /// How long the "Chapter N · New Run" banner stays up.
@@ -177,6 +184,9 @@ pub struct World {
     pub log: Vec<LogEntry>,
     /// Repos whose saved quest log is already in `log`.
     pub logs_loaded: HashSet<String>,
+    pub duck: super::duck::Duck,
+    /// Config `memes`: Quips on/off.
+    pub memes: bool,
 }
 
 impl World {
@@ -197,6 +207,8 @@ impl World {
             towns: HashMap::new(),
             log: Vec::new(),
             logs_loaded: HashSet::new(),
+            duck: Default::default(),
+            memes: true,
         }
     }
 
@@ -279,6 +291,11 @@ impl World {
                     b.fail();
                     h.life.bosses_lost += 1;
                     h.life.streak = 0;
+                    if b.fails >= 2 {
+                        let key = format!("boss:{}:{}", b.name, h.life.bosses_won);
+                        self.duck
+                            .quip(Quip::StubbornBoss, key, self.clock_ms, self.memes);
+                    }
                     h.say(format!("{} laughs!", b.name), 'r');
                 } else {
                     let xp = boss::victory_xp(b.fails);
@@ -287,6 +304,11 @@ impl World {
                         1 => "",
                         _ => " persistence!",
                     };
+                    if b.fails >= 3 {
+                        let key = format!("persist:{}:{}", h.name, h.life.bosses_won);
+                        self.duck
+                            .quip(Quip::Persistence, key, self.clock_ms, self.memes);
+                    }
                     b.defeat();
                     h.life.bosses_won += 1;
                     h.life.streak += 1;
@@ -314,10 +336,33 @@ impl World {
             }
             GameEvent::Rest(i, pct) => {
                 if let Some(h) = self.heroes.get_mut(i) {
+                    if h.context_used.is_some_and(|u| u >= 95) {
+                        let key = format!("rest:{}:{}", h.name, h.life.rests);
+                        self.duck
+                            .quip(Quip::FullRest, key, self.clock_ms, self.memes);
+                    }
                     h.rest(pct);
                     h.say(format!("+{} XP · VIT up", super::hero::REST_XP), 'C');
                     self.save_now = true;
                 }
+            }
+            GameEvent::Summon(i, id, background) => {
+                if let Some(h) = self.heroes.get_mut(i) {
+                    h.summons.push(super::summon::Summon::new(&id, background));
+                    h.life.shadows += 1;
+                }
+            }
+            GameEvent::Dismiss(i, id) => {
+                if let Some(s) = self
+                    .heroes
+                    .get_mut(i)
+                    .and_then(|h| h.summons.iter_mut().find(|s| s.tool_id == id))
+                {
+                    s.dismiss();
+                }
+            }
+            GameEvent::Quip(q, key) => {
+                self.duck.quip(q, key, self.clock_ms, self.memes);
             }
             GameEvent::NewRun(i) => {
                 if let Some(h) = self.heroes.get_mut(i) {
@@ -343,6 +388,25 @@ impl World {
             *left = left.saturating_sub(dt);
             if *left == 0 {
                 self.chapter_banner = None;
+            }
+        }
+        self.duck.update(dt);
+        for h in &self.heroes {
+            // The Duck notices long waits and marathon quests (SPEC §6.6).
+            let block = format!("block:{}", h.name);
+            if h.blocked_ms >= duck::LONG_BLOCK_MS {
+                self.duck
+                    .quip(Quip::LongBlock, block, self.clock_ms, self.memes);
+            } else if h.blocked_ms == 0 {
+                self.duck.reset(&block);
+            }
+            if h.quest
+                .as_ref()
+                .is_some_and(|q| q.elapsed_ms >= duck::LONG_QUEST_MS)
+            {
+                let key = format!("quest:{}:{}", h.name, h.life.quests);
+                self.duck
+                    .quip(Quip::LongQuest, key, self.clock_ms, self.memes);
             }
         }
         for h in &mut self.heroes {
@@ -552,6 +616,47 @@ mod tests {
         assert_eq!(w.log.len(), 1);
         assert_eq!((w.log[0].bosses.as_str(), w.log[0].chapter), ("✗✓", 1));
         assert_eq!(w.heroes[a].life.best_streak, 1);
+    }
+
+    #[test]
+    fn summons_rise_sink_and_pay_their_hero() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.apply(GameEvent::Status(a, Status::Working));
+        w.apply(GameEvent::Summon(a, "t1".into(), false));
+        w.apply(GameEvent::Summon(a, "t2".into(), false));
+        assert_eq!(
+            (w.heroes[a].summons.len(), w.heroes[a].life.shadows),
+            (2, 2)
+        );
+        w.update(20_000);
+        w.apply(GameEvent::Dismiss(a, "t1".into()));
+        w.update(crate::game::summon::SINK_MS);
+        assert_eq!(w.heroes[a].summons.len(), 1);
+        assert!(w.heroes[a].xp >= 2, "summon XP went to the hero");
+    }
+
+    #[test]
+    fn duck_quips_on_a_stubborn_boss_unless_memes_are_off() {
+        for memes in [true, false] {
+            let mut w = World::new("r", "t");
+            w.memes = memes;
+            let a = w.add_hero("A", Class::Knight);
+            fight(&mut w, a, true);
+            assert!(w.duck.says.is_none(), "one failure is not stubborn");
+            fight(&mut w, a, true);
+            assert_eq!(w.duck.says.is_some(), memes);
+        }
+    }
+
+    #[test]
+    fn duck_notices_a_long_block() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.apply(GameEvent::Status(a, Status::Blocked));
+        w.update(duck::LONG_BLOCK_MS);
+        w.update(1);
+        assert!(w.duck.says.is_some());
     }
 
     #[test]

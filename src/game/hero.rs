@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, VecDeque};
 use serde::{Deserialize, Serialize};
 
 use super::repo::Repo;
+use super::summon::Summon;
 use super::xp;
 
 /// Quest ends after this long idle with no new work (SPEC §6.4).
@@ -39,6 +40,8 @@ pub struct Lifetime {
     /// Boss wins in a row (reset by a failure) and the best run so far.
     pub streak: u32,
     pub best_streak: u32,
+    /// Lifetime Summons ("Shadows raised").
+    pub shadows: u32,
     /// Level-up points, one per level, each added to the top stat at the time.
     pub bonus: [u32; 5],
 }
@@ -352,6 +355,10 @@ pub struct Hero {
     last_context: Option<u64>,
     /// Latest file the agent touched (places the hero in the Town).
     pub last_file: Option<String>,
+    /// Subagents currently out (SPEC §6.5).
+    pub summons: Vec<Summon>,
+    /// How long the hero has been blocked without a break.
+    pub blocked_ms: u64,
 }
 
 impl Hero {
@@ -384,6 +391,8 @@ impl Hero {
             last_message: None,
             last_context: None,
             last_file: None,
+            summons: Vec::new(),
+            blocked_ms: 0,
         }
     }
 
@@ -462,7 +471,7 @@ impl Hero {
     }
 
     pub fn busy(&self) -> bool {
-        self.action.is_some() || !self.queue.is_empty()
+        self.action.is_some() || !self.queue.is_empty() || !self.summons.is_empty()
     }
 
     /// Advance animation and the quest. Returns the quest if it just completed.
@@ -491,6 +500,23 @@ impl Hero {
         }
         if let Some(ms) = &mut self.leaving_ms {
             *ms += dt_ms;
+        }
+        self.blocked_ms = if self.status == Status::Blocked {
+            self.blocked_ms + dt_ms
+        } else {
+            0
+        };
+        // Summons that sank give their XP to this hero.
+        let mut earned = 0;
+        self.summons.retain_mut(|s| {
+            let alive = s.update(dt_ms);
+            if !alive {
+                earned += s.xp();
+            }
+            alive
+        });
+        if earned > 0 {
+            self.gain_xp(earned);
         }
         let done = self.update_quest(dt_ms);
         self.track(|h| {

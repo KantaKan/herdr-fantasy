@@ -35,6 +35,7 @@ pub fn run_demo(scenario: &str, seed: u64, speed: f32, config: &Config) -> anyho
         .ok_or_else(|| anyhow::anyhow!("unknown demo scenario `{scenario}` (try: party)"))?;
     sprites::sheets(); // decode before the first frame
     world.reduced_motion = config.reduced_motion;
+    world.memes = config.memes;
     let speed = speed.max(0.0) as f64;
     let mut carry = 0.0;
     with_terminal(|t| {
@@ -64,6 +65,7 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
     let mut world = World::new("…", "Meadow Hamlet");
     world.banner = Some("looking for herdr…".into());
     world.reduced_motion = config.reduced_motion;
+    world.memes = config.memes;
     sprites::sheets();
     let mut visible = true;
     let mut last_save = Instant::now();
@@ -304,6 +306,27 @@ mod tests {
         assert_eq!(m(90, 9), layout::Mode::Mini);
         assert_eq!(m(39, 30), layout::Mode::Compact);
         assert_eq!(m(29, 30), layout::Mode::Mini);
+    }
+
+    #[test]
+    fn duck_bubble_shows_in_full_and_compact() {
+        for rows in [15, 10] {
+            let (mut world, _) = demo::party(1, &crate::config::Config::default().classes);
+            world
+                .duck
+                .quip(crate::game::duck::Quip::ForcePush, "k".into(), 0, true);
+            let mut t = Terminal::new(TestBackend::new(90, rows)).unwrap();
+            t.draw(|f| layout::render(&world, &view::View::default(), f.area(), f.buffer_mut()))
+                .unwrap();
+            let screen: String = t
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|c| c.symbol())
+                .collect();
+            assert!(screen.contains("No fear."), "{rows} rows");
+        }
     }
 
     #[test]

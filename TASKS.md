@@ -87,12 +87,13 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** all three screens work in full and compact layouts and survive restarts. (2026-10-16: full layout checked in previews; compact checked live in the real stage — Forge Village from this repo's git, character sheet Lv4, quest log with 12 quests loaded from disk after a stage restart.)
 
 ## M8 — Summons, Joke Classes, Rubber Duck, Quips
-- [ ] `game/summon.rs`: subagent `tool_use` → Summon, `tool_result` → dismiss; XP to summoning Hero; "Shadows raised" counter. Unit tests.
-- [ ] Joke Class roll seeded by `tool_use` id; 12 placeholder sprites (ART.md §4b); shadow rise/sink animation.
-- [ ] Draw up to 3 Summons per Hero, `+N` beyond.
-- [ ] `game/duck.rs`: triggers + 2-min rate limit (SPEC §6.6), pure + unit tests. Duck sprite + speech bubble.
-- [ ] Quip table keyed by event; `memes` config toggle.
-  **Done when:** a Claude run with 2 parallel subagents shows two Joke Class Summons rising and sinking, a twice-failed `cargo test` makes the Duck quip, and `memes = false` silences every Quip.
+- [x] `game/summon.rs`: subagent `tool_use` → Summon, `tool_result` → dismiss; XP to summoning Hero; "Shadows raised" counter. Unit tests.
+- [x] Joke Class roll seeded by `tool_use` id; 12 placeholder sprites (ART.md §4b); shadow rise/sink animation.
+- [x] Draw up to 3 Summons per Hero, `+N` beyond.
+- [x] `game/duck.rs`: triggers + 2-min rate limit (SPEC §6.6), pure + unit tests. Duck sprite + speech bubble.
+- [x] Quip table keyed by event; `memes` config toggle.
+- [ ] **Manual check left for KantaKan** (#8): ask Claude for something that launches 2 parallel subagents and watch them rise/sink (I don't launch real subagents unasked). Covered by `m8_two_parallel_subagents_rise_and_sink` with the real `Agent` tool shape, and seen in demo previews.
+  **Done when:** a Claude run with 2 parallel subagents shows two Joke Class Summons rising and sinking, a twice-failed `cargo test` makes the Duck quip, and `memes = false` silences every Quip. (Duck verified live 2026-10-16: two failing `cargo test` runs → log `duck quips (StubbornBoss): Quack. Explain it to me, line by line.`)
 
 ## M9 — Kitty graphics (Mac/Linux upgrade; Windows Terminal stays halfblock)
 - [ ] `render/backend.rs` probe + `render` config override + `doctor` output.

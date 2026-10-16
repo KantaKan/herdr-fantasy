@@ -1,10 +1,12 @@
 pub mod boss;
 pub mod demo;
+pub mod duck;
 pub mod hero;
 pub mod moves;
 pub mod party;
 pub mod persist;
 pub mod repo;
+pub mod summon;
 pub mod town;
 pub mod world;
 pub mod xp;

@@ -43,7 +43,7 @@ const SHELL: [&str; 11] = [
     "ls -la src",
     "curl -s https://example.com/health",
     "git commit -m 'fix redirect'",
-    "git push origin main",
+    "git push --force origin main",
     "git pull --rebase",
     "npm install",
     "rm -rf target/tmp",
@@ -96,7 +96,7 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         w.add_hero("OpenCode", Class::for_agent(classes, "opencode")),
     );
     let test = || Some(BOSS_CMD.to_string());
-    let script = vec![
+    let mut script = vec![
         (0, E::Title(k, "fix login redirect bug".into())),
         (0, E::Title(m, "add rate limiter".into())),
         (0, E::Title(r, "write session tests".into())),
@@ -104,6 +104,11 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         (0, E::Status(m, Status::Working)),
         (0, E::Status(r, Status::Idle)),
         (0, E::ContextUsed(k, Some(35))),
+        // Claude sends two subagents off to explore; they come back at different times.
+        (3_000, E::Summon(k, "toolu_demo_scout".into(), false)),
+        (3_000, E::Summon(k, "toolu_demo_reader".into(), false)),
+        (11_000, E::Dismiss(k, "toolu_demo_scout".into())),
+        (13_500, E::Dismiss(k, "toolu_demo_reader".into())),
         (8_000, E::BossFight(k, BossKind::Test, String::new())),
         (8_000, E::Act(k, Action::Cast, test())),
         (9_500, E::BossResult(k, true)),
@@ -133,6 +138,8 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         // OpenCode starts a fresh session: a new Chapter, level kept.
         (40_000, E::NewRun(r)),
     ];
+    // Script lines are grouped by story above; play them in time order.
+    script.sort_by_key(|(at, _)| *at);
     let demo = Demo {
         rng: ChaCha8Rng::seed_from_u64(seed),
         t: 0,

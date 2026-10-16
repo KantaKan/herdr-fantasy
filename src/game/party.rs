@@ -244,6 +244,13 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
                     w.apply(GameEvent::BossFight(i, kind, command.to_string()));
                     w.heroes[i].boss_tool = Some(id.clone());
                 }
+                if matches!(name.as_str(), "Agent" | "Task") {
+                    let background = input["run_in_background"].as_bool().unwrap_or(false);
+                    w.apply(GameEvent::Summon(i, id.clone(), background));
+                }
+                if super::duck::is_force_push(command) {
+                    w.apply(GameEvent::Quip(super::duck::Quip::ForcePush, id.clone()));
+                }
                 let life = &mut w.heroes[i].life;
                 match name.as_str() {
                     "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => life.edits += 1,
@@ -272,6 +279,7 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
                 }
             }
             Entry::ToolResult { id, is_error, text } if !f.history => {
+                w.apply(GameEvent::Dismiss(i, id.clone()));
                 if w.heroes[i].boss_tool.as_ref() == Some(id) {
                     w.heroes[i].boss_tool = None;
                     w.apply(GameEvent::BossResult(i, boss::failed(*is_error, text)));
@@ -726,6 +734,56 @@ mod tests {
             (fresh.heroes[0].life.edits, fresh.heroes[0].life.reads),
             (1, 1)
         );
+    }
+
+    #[test]
+    fn m8_two_parallel_subagents_rise_and_sink() {
+        let mut w = World::new("", "");
+        let mut s = store("summons");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        let agent_call = |id: &str| Entry::Tool {
+            id: id.into(),
+            name: "Agent".into(),
+            input: serde_json::json!({"subagent_type": "Explore", "prompt": "x"}),
+        };
+        fed(&mut w, &[agent_call("a1"), agent_call("a2")], false);
+        assert_eq!(w.heroes[0].summons.len(), 2);
+        assert_eq!(w.heroes[0].life.shadows, 2);
+        fed(&mut w, &[result("a1", false), result("a2", false)], false);
+        assert!(
+            w.heroes[0]
+                .summons
+                .iter()
+                .all(|s| s.phase == crate::game::summon::Phase::Sinking)
+        );
+        w.update(crate::game::summon::SINK_MS);
+        assert!(w.heroes[0].summons.is_empty());
+    }
+
+    #[test]
+    fn force_push_makes_the_duck_say_no_fear() {
+        let mut w = World::new("", "");
+        let mut s = store("force");
+        sync(
+            &mut w,
+            &[agent("p1", "claude", Status::Working)],
+            &classes(),
+            &mut s,
+        );
+        fed(
+            &mut w,
+            &[tool(
+                "Bash",
+                serde_json::json!({"command": "git push --force"}),
+            )],
+            false,
+        );
+        assert_eq!(w.duck.says.as_ref().unwrap().0, "No fear.");
     }
 
     #[test]

@@ -369,7 +369,8 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 
 ### 6.5 Summons and Joke Classes
 - A subagent `tool_use` (`Task` / `Agent`) spawns a **Summon** next to the Hero that launched it; its `tool_result` dismisses it. Several may run in parallel.
-- Summons have no level and are not saved. Any XP they earn goes to the summoning Hero (same per-quest caps). Each spawn increments the Hero's lifetime "Shadows raised".
+- Summons have no level and are not saved. Subagent transcripts are sidechains we skip, so a Summon's XP is time-based: 1 per 10 s it was out, capped at 30, paid to the summoning Hero when it sinks. Each spawn increments the Hero's lifetime "Shadows raised" (character sheet). `run_in_background: true` subagents return at once, so their Summon stays 60 s and then sinks.
+- Rise and sink take 0.6 s each: the sprite is revealed bottom-up out of a `p`/`k` shadow puddle. Each Joke Class says its entrance line for 2.5 s (a Quip, so `memes = false` hides it). The footer shows `☠N` while Summons are out.
 - Look: a `p`/`k` shadow rises from the ground, solidifies into a **Joke Class** costume, fights, then sinks back into shadow.
 - Joke Class = seeded pick from the table below using the subagent's `tool_use` id (stable for its lifetime, reproducible in demo):
 
@@ -391,10 +392,11 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 - Gimmicks are cosmetic only; they never change real XP.
 
 ### 6.6 Rubber Duck and Quips
-- One Rubber Duck per Stage, by the campfire. Never levels, never played by an Agent.
+- One Rubber Duck per Stage: by the campfire when the party camps, otherwise just in front of the enemies. Never levels, never played by an Agent. Its speech bubble sits top-right of the scene for 5 s (full and compact layouts). Every Duck quip is logged at info level.
 - Triggers (each from real state): a Boss survives ≥ 2 times in a row; a Hero blocked ≥ 5 min; a Quest running ≥ 30 min. At most one Duck Quip per 2 min.
 - Quips are original, text-only lines (no images, no quotes from copyrighted works) in a built-in table keyed by event, e.g. Boss defeated after ≥ 3 failures → "it works on my machine"; `git push --force` → "no fear"; Sahur Knocker laughs → "TUNG TUNG TUNG!"; Rest at ≥ 95% context → "I have no memory of this place".
 - `memes = false` disables all Quips; the Duck still sits there.
+- Each occurrence quips once (e.g. one block, one boss fight); a block that ends lets the next one quip again. Implemented in `game/duck.rs` (pure, tested); the Sahur Knocker's "TUNG TUNG TUNG!" shows over the boss while it laughs.
 
 ---
 

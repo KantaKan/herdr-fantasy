@@ -434,6 +434,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
         prop(h, scene, buf, x as i32 + dx, py);
         condition(w, h, scene, buf, x as i32 + dx, py, i as u64);
+        summons(w, h, scene, buf, x as i32 + dx + 9);
         float_text(h, scene, buf, x, py);
         if let Some((s, fg)) = badge(h) {
             text(buf, scene.x + x + 12, scene.y, scene.right(), s, fg, 'n');
@@ -478,6 +479,94 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     } else {
         let hit = w.heroes.iter().any(|h| h.anim() == Anim::Attack);
         slimes(w, scene, buf, right, 2, hit);
+        // The Rubber Duck watches the fight from just in front of the enemies.
+        let d = sheet("rubber_duck").frame(
+            if w.duck.says.is_some() {
+                "quack"
+            } else {
+                "idle"
+            },
+            w.clock_ms,
+        );
+        let dx = right - 2 * 12 - d.w as i32 - 3;
+        halfblock::draw(buf, scene, d, dx, stand_y(scene, d.h), true);
+    }
+    if let Some(b) = &w.boss
+        && b.id == "sahur_knocker"
+        && b.state == crate::game::world::BossState::Laugh
+        && w.memes
+    {
+        let s = crate::game::duck::SAHUR_LAUGH;
+        let x = scene.right().saturating_sub(s.chars().count() as u16 + 2);
+        text_on(buf, x, scene.y, scene.right(), s, 'o');
+    }
+    duck_bubble(w, scene, buf);
+}
+
+/// The Duck's speech bubble, top-right of the scene so it never covers a hero.
+fn duck_bubble(w: &World, scene: Rect, buf: &mut Buffer) {
+    let Some((said, _)) = &w.duck.says else {
+        return;
+    };
+    let s = format!(" 🦆 {said} ");
+    let len = s.chars().count() as u16 + 1;
+    let x = scene.right().saturating_sub(len + 1);
+    let style = Style::default().fg(c('k')).bg(c('w'));
+    buf.set_stringn(x, scene.y + 1, s, (scene.right() - x) as usize, style);
+}
+
+/// Up to 3 Summons beside their hero, rising out of / sinking into a shadow puddle;
+/// `+N` for the rest (SPEC §6.5).
+fn summons(w: &World, h: &Hero, scene: Rect, buf: &mut Buffer, x: i32) {
+    for (k, s) in h.summons.iter().take(3).enumerate() {
+        let sx = x + k as i32 * 5;
+        let full = sheet(&format!("joke_{}", s.id())).frame("idle", s.alive_ms);
+        let ground = stand_y(scene, full.h);
+        let shown = (s.emerged() * full.h as f32).round() as u16;
+        if shown < full.h {
+            for px in 1..full.w as i32 - 1 {
+                let key = if (px + k as i32) % 3 == 0 { 'k' } else { 'p' };
+                pixel(buf, scene, sx + px, ground + full.h as i32 - 1, key);
+            }
+        }
+        // Only the emerged rows: the body comes up out of the shadow.
+        let cut = full.h - shown;
+        let mut f = crate::render::sprites::Frame {
+            w: full.w,
+            h: full.h,
+            px: full.px.clone(),
+            ms: full.ms,
+        };
+        for y in 0..cut {
+            for xx in 0..f.w {
+                f.px[(y * f.w + xx) as usize] = None;
+            }
+        }
+        halfblock::draw(buf, scene, &f, sx, ground, false);
+        if w.memes && s.alive_ms < 2_500 && k == h.summons.len().min(3) - 1 {
+            let q = s.quip();
+            let ty = (scene.y as i32 + ground / 2 - 1).max(scene.y as i32) as u16;
+            text_on(
+                buf,
+                (scene.x as i32 + sx).max(0) as u16,
+                ty,
+                scene.right(),
+                q,
+                'C',
+            );
+        }
+    }
+    if h.summons.len() > 3 {
+        let s = format!("+{}", h.summons.len() - 3);
+        let y = scene.y + (stand_y(scene, 12) / 2) as u16;
+        text_on(
+            buf,
+            (scene.x as i32 + x + 15).max(0) as u16,
+            y,
+            scene.right(),
+            &s,
+            'p',
+        );
     }
 }
 
@@ -522,6 +611,7 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         let hit = w.heroes.iter().any(|h| h.anim() == Anim::Attack);
         slimes(w, scene, buf, scene.width as i32, 1, hit);
     }
+    duck_bubble(w, scene, buf);
 }
 
 fn bar(filled: usize, total: usize) -> (String, String) {
@@ -585,6 +675,9 @@ fn footer_row(h: &Hero, area: Rect, buf: &mut Buffer, y: u16, selected: bool) {
             }
             None => x = text(buf, x, y, end, "  ?        ", 's', 'd'),
         }
+    }
+    if !h.summons.is_empty() {
+        x = text(buf, x, y, end, &format!(" ☠{}", h.summons.len()), 'p', 'd');
     }
     if area.width >= 36 {
         let fg = if h.status == Status::Blocked {
