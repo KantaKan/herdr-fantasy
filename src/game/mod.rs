@@ -8,6 +8,7 @@ pub mod loot;
 pub mod moves;
 pub mod party;
 pub mod persist;
+pub mod recap;
 pub mod repo;
 pub mod skins;
 pub mod summon;

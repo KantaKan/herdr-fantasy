@@ -407,6 +407,11 @@ mod tests {
         assert_eq!(m(90, 9), layout::Mode::Mini);
         assert_eq!(m(39, 30), layout::Mode::Compact);
         assert_eq!(m(29, 30), layout::Mode::Mini);
+        // Big hero mode: tall, and the half-size scene fits the party (3 heroes with pets).
+        let big = |cols, rows| layout::big(&w, Rect::new(0, 0, cols, rows));
+        assert!(big(200, 30));
+        assert!(!big(200, 29), "not tall enough");
+        assert!(!big(150, 40), "the party wouldn't fit at half size");
     }
 
     #[test]
@@ -531,6 +536,7 @@ mod preview {
                         Ok("sheet") => view::Screen::Sheet,
                         Ok("town") => view::Screen::Town,
                         Ok("help") => view::Screen::Help,
+                        Ok("week") => view::Screen::Week,
                         _ => view::Screen::Battle,
                     },
                     ..Default::default()

@@ -307,12 +307,64 @@ pub fn character(w: &World, hero: Option<&Hero>, area: Rect, buf: &mut Buffer) {
     }
 }
 
+/// Weekly recap (`w`, M15): the last 7 days of the quest log.
+pub fn week(w: &World, area: Rect, buf: &mut Buffer) {
+    use crate::game::recap::{self, WEEKDAYS};
+    let today = if w.today > 0 {
+        w.today
+    } else {
+        w.log.iter().map(|e| e.day).max().unwrap_or(0)
+    };
+    let r = recap::week(&w.log, today);
+    let x0 = area.x + 1;
+    let mut y = area.y;
+    put(buf, area, x0, y, " This week", 'y', true);
+    y += 2;
+    let repo_name = |key: &str| {
+        w.heroes
+            .iter()
+            .filter_map(|h| h.seat.as_ref())
+            .find(|s| s.repo.key == key)
+            .map_or_else(|| w.repo.clone(), |s| s.repo.name.clone())
+    };
+    let lines = [
+        format!("Quests {} · XP {}", r.quests, r.xp),
+        format!(
+            "Bosses {} won / {} lost · best run {}",
+            r.won, r.lost, r.best_run
+        ),
+        match &r.top_hero {
+            Some((h, xp)) => format!("MVP {h} ({xp} XP)"),
+            None => "MVP —".into(),
+        },
+        match &r.top_repo {
+            Some((key, n)) => format!("Busiest repo {} ({n} quests)", repo_name(key)),
+            None => "Busiest repo —".into(),
+        },
+    ];
+    for line in lines {
+        put(buf, area, x0, y, &line, 's', false);
+        y += 1;
+    }
+    y += 1;
+    let top = r.per_day.iter().copied().max().unwrap_or(0).max(1);
+    for (i, n) in r.per_day.iter().enumerate() {
+        let day = today.saturating_sub(6) + i as u32;
+        let x = put(buf, area, x0, y, WEEKDAYS[recap::weekday(day)], 'w', i == 6);
+        let bar = (*n as usize * 24).div_ceil(top as usize);
+        let x = put(buf, area, x + 1, y, &"█".repeat(bar), 'c', false);
+        put(buf, area, x + 1, y, &n.to_string(), 's', false);
+        y += 1;
+    }
+}
+
 /// Keys (`?`).
 pub fn help(area: Rect, buf: &mut Buffer) {
     let lines = [
         ("t", "town — your repo as a village"),
         ("q", "quest log"),
         ("c", "character sheet of the selected hero"),
+        ("w", "this week's recap"),
         ("← →", "select hero"),
         ("Enter", "jump to that agent's pane"),
         ("Esc", "back to battle"),

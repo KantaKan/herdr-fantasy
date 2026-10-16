@@ -61,7 +61,10 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
     let m = mode(area, w);
     let hero = w.heroes.get(view.selected);
     // Text screens take everything below the top bar, in any layout.
-    if matches!(view.screen, Screen::Quests | Screen::Sheet | Screen::Help) {
+    if matches!(
+        view.screen,
+        Screen::Quests | Screen::Sheet | Screen::Help | Screen::Week
+    ) {
         top_bar(w, area, buf, area.y);
         let body = Rect::new(
             area.x,
@@ -72,6 +75,7 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
         match view.screen {
             Screen::Quests => screens::quests(w, hero, view.scroll, body, buf),
             Screen::Sheet => screens::character(w, hero, body, buf),
+            Screen::Week => screens::week(w, body, buf),
             _ => screens::help(body, buf),
         }
         return;
@@ -87,7 +91,9 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
                 backdrop(w, scene, buf);
                 screens::town_scene(w, hero, scene, buf, m == Mode::Full);
             } else {
-                if m == Mode::Full {
+                if m == Mode::Full && big(w, scene) {
+                    big_scene(w, scene, buf);
+                } else if m == Mode::Full {
                     full_scene(w, scene, buf);
                 } else {
                     compact_scene(w, scene, buf);
@@ -397,6 +403,72 @@ fn plus_n(w: &World, scene: Rect, buf: &mut Buffer, x: u16, drawn: usize) {
     if w.heroes.len() > drawn {
         let s = format!("+{}", w.heroes.len() - drawn);
         text(buf, scene.x + x, scene.y, scene.right(), &s, 'w', 'n');
+    }
+}
+
+/// Big hero mode (M15): a tall pane whose half-size scene still fits the whole party.
+pub fn big(w: &World, scene: Rect) -> bool {
+    let step = if w.heroes.iter().any(|h| h.pet.is_some()) {
+        23
+    } else {
+        17
+    };
+    let heroes = w.heroes.len().clamp(1, MAX_DRAWN) as u16;
+    scene.height >= 30 && (scene.width / 2).saturating_sub(29) / step >= heroes
+}
+
+/// The full scene drawn at half size, then every pixel doubled. Text (floats, badges,
+/// quips) is redrawn once at normal size so it stays readable.
+fn big_scene(w: &World, scene: Rect, buf: &mut Buffer) {
+    let small = Rect::new(0, 0, scene.width / 2, scene.height / 2);
+    let mut s = Buffer::empty(small);
+    full_scene(w, small, &mut s);
+    let halves = |c: &ratatui::buffer::Cell| match c.symbol() {
+        "▀" => Some((c.fg, c.bg)),
+        " " => Some((c.bg, c.bg)),
+        _ => None,
+    };
+    for y in 0..small.height {
+        for x in 0..small.width {
+            let c = &s[(x, y)];
+            let (top, bottom) = halves(c).unwrap_or((c.bg, c.bg));
+            for (dy, color) in [(0, top), (1, bottom)] {
+                for dx in 0..2 {
+                    let (bx, by) = (scene.x + x * 2 + dx, scene.y + y * 2 + dy);
+                    if bx < scene.right() && by < scene.bottom() {
+                        buf[(bx, by)].reset();
+                        buf[(bx, by)].set_bg(color);
+                    }
+                }
+            }
+        }
+    }
+    for y in 0..small.height {
+        let mut x = 0;
+        while x < small.width {
+            if halves(&s[(x, y)]).is_some() {
+                x += 1;
+                continue;
+            }
+            let start = x;
+            let mut run = String::new();
+            let fg = s[(x, y)].fg;
+            while x < small.width && halves(&s[(x, y)]).is_none() {
+                run.push_str(s[(x, y)].symbol());
+                x += 1;
+            }
+            let style = Style::default().fg(fg).bg(s[(start, y)].bg);
+            let bx = scene.x + start * 2;
+            if bx < scene.right() {
+                buf.set_stringn(
+                    bx,
+                    scene.y + y * 2,
+                    &run,
+                    (scene.right() - bx) as usize,
+                    style,
+                );
+            }
+        }
     }
 }
 

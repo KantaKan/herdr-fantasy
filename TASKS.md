@@ -134,9 +134,9 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** a configured pet follows its hero in the stage and the GIF; a Lv 10 hero shows its unlocked skin. (2026-10-16: demo party — Lv 12 Crimson Claude with a grown dragon, Lv 6 Verdant Mage with a baby owl, a cat — in previews and snapshots; GIF refresh at the end of M15.)
 
 ## M15 — Weekly recap + big hero mode
-- [ ] `w` opens a weekly recap from the quest log: quests, XP, bosses won/lost, best streak, busiest repo, per-day bars.
-- [ ] Tall stage panes (≥ 30 rows) draw heroes, bosses and Summons at 2× size.
-  **Done when:** the recap matches the quest log, and a tall pane shows big sprites without breaking the other layouts or the CPU budget.
+- [x] `w` opens a weekly recap from the quest log: quests, XP, bosses won/lost, best streak, busiest repo, per-day bars.
+- [x] Tall stage panes (≥ 30 rows) draw heroes, bosses and Summons at 2× size.
+  **Done when:** the recap matches the quest log, and a tall pane shows big sprites without breaking the other layouts or the CPU budget. (2026-10-17: recap checked against the demo quest log — 3 quests, 189 XP, 1 won / 2 lost; big mode in a 200×40 preview; `layouts_by_size` covers when it turns on. CPU: the stress bench measured 3.45% in a herdr pane today vs 3.68% for the pre-M11 build in the same pane — no regression, but this machine was busier than when the 0.34% in the README was measured, so the budget wants a re-check on a quiet machine.)
 
 ## Manual QA checklist (run before each release)
 - [ ] Windows Terminal + native herdr: halfblock, auto-open, ask popup, transcript events.

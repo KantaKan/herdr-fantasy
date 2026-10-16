@@ -154,6 +154,8 @@ pub struct LogEntry {
     pub result: String,
     pub bosses: String,
     pub chapter: u32,
+    /// Day it ended (days since 1970, UTC; 0 = unknown), for the weekly recap.
+    pub day: u32,
 }
 
 impl From<&Finished> for LogEntry {
@@ -167,6 +169,7 @@ impl From<&Finished> for LogEntry {
             result: f.quest.result.to_string(),
             bosses: f.quest.bosses.clone(),
             chapter: f.quest.chapter,
+            day: 0,
         }
     }
 }
@@ -259,7 +262,11 @@ impl World {
     /// Move newly finished quests into the log; returns them for the caller to persist.
     pub fn drain_finished(&mut self) -> Vec<Finished> {
         let done = std::mem::take(&mut self.finished);
-        self.log.extend(done.iter().map(LogEntry::from));
+        let today = self.today;
+        self.log.extend(done.iter().map(|f| LogEntry {
+            day: today,
+            ..LogEntry::from(f)
+        }));
         done
     }
 

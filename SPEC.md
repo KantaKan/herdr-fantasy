@@ -235,7 +235,7 @@ command = ["./target/release/herdr-fantasy", "ask"]
 - Quest line: current quest title of the **focused or most recently active** hero.
 - Scene: heroes left, enemies right. Max 4 heroes drawn; extra shown as `+N`. Up to 3 Summons drawn small beside their Hero, extra as `+N`. The Rubber Duck sits by the campfire.
 - Footer: one row per hero: name, level, XP bar, stamina bar, current activity text.
-- Keys inside stage (only when stage pane is focused): `t` town, `q` quest log, `c` character sheet of selected hero, `←/→` select hero (footer `▶`), `↑/↓` scroll the quest log, `Enter` focus that agent's pane (`agent.focus`), `?` help, `Esc` back to battle, `Ctrl-C` quit. Each screen key toggles. Quest log, sheet and help use the whole pane below the top bar in every layout; the town replaces the battle scene.
+- Keys inside stage (only when stage pane is focused): `t` town, `q` quest log, `c` character sheet of selected hero, `w` weekly recap, `←/→` select hero (footer `▶`), `↑/↓` scroll the quest log, `Enter` focus that agent's pane (`agent.focus`), `?` help, `Esc` back to battle, `Ctrl-C` quit. Each screen key toggles. Quest log, sheet, recap and help use the whole pane below the top bar in every layout; the town replaces the battle scene.
 
 ### 5.3 Compact mode and mini mode (thresholds in §5.2)
 - Compact: smaller scene (heroes as 8×8 faces), footer kept. The boss isn't drawn; its name + HP stay on the quest line.
@@ -457,6 +457,10 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
 ### 7.8 Pets and skins (M14)
 - Pets: config `[pets]` maps an agent kind (or `default`) to cat, dog, dragon or owl; none by default. The pet stands at its hero's front foot in the full layout, follows lunges and hops, walks and sits with it, and grows up at Lv 10 (baby 8×7 → grown 11×9, `tools/gen_pets.py`). A party with pets spreads out (hero slots 23 cells instead of 17). Compact and mini layouts show no pets.
 - Skins: recolors of the hero sprite unlocked by level: Verdant (Lv 5), Crimson (Lv 10), Royal Gold (Lv 20); the best unlocked one is worn. `skins = false` turns them off. The character sheet names the pet and skin.
+
+### 7.9 Weekly recap and big hero mode (M15)
+- `w`: the last 7 days of the quest log (UTC days; each log line's `ended_unix_ms`): quests, XP, bosses won/lost, best run of wins, MVP hero by XP, busiest repo, and quests per day as bars (today last).
+- Big hero mode: when the full-layout scene is ≥ 30 rows tall and the party still fits at half width, the scene is drawn at half size and every pixel doubled (heroes, pets, Summons, bosses, props). Text (floats, badges, quips) is redrawn once at normal size; the headline banner is drawn on top as usual.
 
 ### 7.4 Stamina (context window) — "what happens when context is full"
 - `STA% = 100 - context_pct`, where `context_pct = current_context_tokens / context_window_size`.

@@ -62,6 +62,8 @@ struct QuestLine {
     bosses: String,
     #[serde(default = "first_chapter")]
     chapter: u32,
+    #[serde(default)]
+    ended_unix_ms: u64,
 }
 
 fn first_chapter() -> u32 {
@@ -196,6 +198,7 @@ impl Store {
                 result: q.result,
                 bosses: q.bosses,
                 chapter: q.chapter,
+                day: super::daily::day_of(q.ended_unix_ms),
             })
             .collect()
     }

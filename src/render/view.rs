@@ -9,6 +9,7 @@ pub enum Screen {
     Sheet,
     Town,
     Help,
+    Week,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +49,7 @@ impl View {
             KeyCode::Char('t') => toggle(self, Screen::Town),
             KeyCode::Char('q') => toggle(self, Screen::Quests),
             KeyCode::Char('c') => toggle(self, Screen::Sheet),
+            KeyCode::Char('w') => toggle(self, Screen::Week),
             KeyCode::Char('?') => toggle(self, Screen::Help),
             KeyCode::Esc => self.screen = Screen::Battle,
             KeyCode::Left if heroes > 0 => self.selected = (self.selected + heroes - 1) % heroes,
