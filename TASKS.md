@@ -154,8 +154,8 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** picking a class or pet in the stage changes the hero without editing files. (2026-10-17: `class_and_pet_cycle_for_the_whole_kind`, `edits_keep_comments_and_other_keys`, `welcome_card_for_a_new_party_until_a_key`; settings screen checked in a preview.)
 
 ## M19 — Prebuilt binaries
-- [ ] Release workflow builds Windows, macOS (arm64 + x86_64) and Linux binaries on each tag.
-- [ ] Install uses a prebuilt binary when one matches, else builds with cargo.
+- [x] Release workflow builds Windows, macOS (arm64 + x86_64) and Linux binaries on each tag.
+- [x] Install uses a prebuilt binary when one matches, else builds with cargo.
   **Done when:** a fresh machine without Rust installs the plugin.
 
 ## M20 — Performance pass

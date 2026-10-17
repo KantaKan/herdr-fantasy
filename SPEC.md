@@ -522,6 +522,9 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
 
 ---
 
+## 8.6 Install (M19)
+Each tag's release workflow builds `herdr-fantasy-<target>[.exe]` for x86_64 Windows/Linux and arm64/x86_64 macOS, with a `.sha256` next to each. The manifest's `[[build]]` runs `tools/install.ps1` (Windows) or `tools/install.sh` (Linux/macOS): download the binary for Cargo.toml's version, check the SHA-256, place it at `target/release/`; on any failure or another platform, `cargo build --release --locked`. Only install touches the network.
+
 ## 9. Config (`$HERDR_PLUGIN_CONFIG_DIR/config.toml`)
 
 ```toml

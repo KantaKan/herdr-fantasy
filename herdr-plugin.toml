@@ -5,8 +5,14 @@ min_herdr_version = "0.9.0"
 description = "Your coding agents as an RPG party"
 platforms = ["linux", "macos", "windows"]
 
+# Prebuilt binary from the matching GitHub release when there is one, else cargo.
 [[build]]
-command = ["cargo", "build", "--release", "--locked"]
+platforms = ["windows"]
+command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/install.ps1"]
+
+[[build]]
+platforms = ["linux", "macos"]
+command = ["sh", "tools/install.sh"]
 
 [[startup]]
 command = ["./target/release/herdr-fantasy", "autostart"]

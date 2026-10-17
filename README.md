@@ -17,7 +17,7 @@ transcripts are only ever read.
 
 ## Install
 
-Needs a Rust toolchain (`cargo`), because herdr builds the plugin on install.
+Installs a prebuilt binary for Windows x64, Linux x64 and macOS (Apple Silicon or Intel) from the matching GitHub release; on any other platform herdr builds it with a Rust toolchain (`cargo`). The download happens only at install time — the stage itself never uses the network.
 
 ```sh
 herdr plugin install KantaKan/herdr-fantasy

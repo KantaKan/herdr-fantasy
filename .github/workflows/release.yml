@@ -1,0 +1,38 @@
+name: Release
+
+# On a version tag: build the stage binary for each platform and attach it (with a
+# SHA-256 file) to the GitHub release. tools/install.{sh,ps1} download these at install
+# time so users don't need a Rust toolchain.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: .exe }
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, ext: "" }
+          - { os: macos-latest, target: aarch64-apple-darwin, ext: "" }
+          - { os: macos-latest, target: x86_64-apple-darwin, ext: "" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          name=herdr-fantasy-${{ matrix.target }}${{ matrix.ext }}
+          cp target/${{ matrix.target }}/release/herdr-fantasy${{ matrix.ext }} "$name"
+          (sha256sum "$name" 2>/dev/null || shasum -a 256 "$name") > "$name.sha256"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: herdr-fantasy-${{ matrix.target }}*
