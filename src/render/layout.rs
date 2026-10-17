@@ -472,8 +472,39 @@ fn big_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     }
 }
 
+/// The boss frame and the column it stands at, shrunk a tier at a time until it fits
+/// under the sky.
+fn boss_sprite(w: &World, scene: Rect) -> Option<(&'static super::sprites::Frame, i32)> {
+    let b = w.boss.as_ref()?;
+    let room = (scene.height as i32 - 1) * 2;
+    let mut tier = b.tier;
+    let mut s = sheet(&format!("boss_{}_{}", b.id, tier.id()));
+    while (s.frames[0].h as i32) > room
+        && let Some(t) = tier.smaller()
+    {
+        tier = t;
+        s = sheet(&format!("boss_{}_{}", b.id, tier.id()));
+    }
+    let f = s.frame(b.tag(), b.state_ms);
+    Some((f, scene.width as i32 - f.w as i32 - 2))
+}
+
+/// Swing rhythm in melee: the 3 attack frames (240 ms), then the wind-up held while
+/// it lines up the next blow. Returns the attack-sheet time to show.
+const SWING_MS: u64 = 600;
+fn swing_ms(h: &Hero) -> u64 {
+    let t = h.anim_ms % SWING_MS;
+    if t < 240 { t } else { 0 }
+}
+
+/// Is a melee blow landing on the boss right now (the strike frame)?
+fn blow_lands(h: &Hero) -> bool {
+    h.engaged && h.charge >= 1.0 && (80..160).contains(&(h.anim_ms % SWING_MS))
+}
+
 fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
+    let boss_at = boss_sprite(w, scene).map(|(_, x)| x);
     // Pets stand at their hero's front foot, so a party with pets spreads out.
     let step: u16 = if w.heroes.iter().any(|h| h.pet.is_some()) {
         23
@@ -489,6 +520,11 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         // Exhausted heroes walk at half speed (SPEC §5.4).
         let slow = h.anim() == Anim::Walk && h.fatigue() == Fatigue::Exhausted;
         let ms = if slow { h.anim_ms / 2 } else { h.anim_ms };
+        let ms = if h.engaged && h.anim() == Anim::Attack {
+            swing_ms(h)
+        } else {
+            ms
+        };
         let f = sheet(&format!("hero_{}", h.class.id())).frame(h.anim().tag(), ms);
         let skinned;
         let f = match crate::game::skins::for_level(h.level).filter(|_| w.skins) {
@@ -502,7 +538,22 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         if h.level_up_ms > 0 {
             level_up(w, scene, buf, x, h.level_up_ms);
         }
-        let (mut dx, flip) = walk_off(h);
+        let (mut dx, mut flip) = walk_off(h);
+        // Boss fight: run over to the boss (fighters line up behind each other) and
+        // back home afterwards, facing the way it runs.
+        if h.charge > 0.0
+            && let Some(bx) = boss_at.filter(|_| !w.reduced_motion)
+        {
+            let k = w
+                .boss
+                .as_ref()
+                .and_then(|b| b.fighters.iter().position(|n| *n == h.name))
+                .unwrap_or(0) as i32;
+            let target = bx - 12 - k * 7;
+            let e = h.charge * h.charge * (3.0 - 2.0 * h.charge); // ease in-out
+            dx += ((target - x as i32) as f32 * e).round() as i32;
+            flip |= !h.engaged;
+        }
         let mut py = ground;
         let running = h.anim() == Anim::Walk && h.leaving_ms.is_none();
         if !w.reduced_motion {
@@ -549,18 +600,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     plus_n(w, scene, buf, 1 + drawn as u16 * step, drawn);
 
     let right = scene.width as i32;
-    if let Some(b) = &w.boss {
-        // Drop a size tier until the boss fits under the sky.
-        let room = (scene.height as i32 - 1) * 2;
-        let mut tier = b.tier;
-        let mut s = sheet(&format!("boss_{}_{}", b.id, tier.id()));
-        while (s.frames[0].h as i32) > room
-            && let Some(t) = tier.smaller()
-        {
-            tier = t;
-            s = sheet(&format!("boss_{}_{}", b.id, tier.id()));
-        }
-        let f = s.frame(b.tag(), b.state_ms);
+    if let (Some(b), Some((f, bx))) = (&w.boss, boss_sprite(w, scene)) {
         // Hit: one white frame, then a ±1 column shake while it lasts (SPEC §8.4).
         let hit = b.hit_ms > 0 && !w.reduced_motion;
         let white;
@@ -575,19 +615,29 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         } else {
             f
         };
+        // A landing melee blow knocks it back a column and throws a spark.
+        let blow = !w.reduced_motion && w.heroes.iter().any(blow_lands);
         let shake = if hit {
             [1, -1][((b.hit_ms / 40) % 2) as usize]
+        } else if blow {
+            1
         } else {
             0
         };
-        halfblock::draw(
-            buf,
-            scene,
-            f,
-            right - f.w as i32 - 2 + shake,
-            stand_y(scene, f.h),
-            false,
-        );
+        let by = stand_y(scene, f.h);
+        halfblock::draw(buf, scene, f, bx + shake, by, false);
+        if blow {
+            let cy = by + f.h as i32 / 2;
+            for (dx, dy, c) in [
+                (0, 0, 'w'),
+                (-1, -1, 'y'),
+                (1, 1, 'y'),
+                (-1, 1, 'o'),
+                (1, -1, 'o'),
+            ] {
+                pixel(buf, scene, bx + 1 + dx, cy + dy, c);
+            }
+        }
     } else if camp(w) {
         campfire(w, scene, buf, right, true);
     } else {

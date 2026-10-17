@@ -66,6 +66,9 @@ pub const HIT_MS: u64 = 150;
 
 const LAUGH_MS: u64 = 1200;
 const DYING_MS: u64 = 1200;
+/// Run to the boss, and back home.
+const CHARGE_MS: f32 = 500.0;
+const RETURN_MS: f32 = 800.0;
 /// How long a departing hero takes to walk off-screen.
 pub const LEAVE_MS: u64 = 1500;
 
@@ -311,12 +314,16 @@ impl World {
                 // the same kind joins the fight.
                 match &mut self.boss {
                     Some(b) if b.kind == kind && b.state != BossState::Dying => {
+                        h.engaged = true;
                         if !b.fighters.contains(&h.name) {
                             b.fighters.push(h.name.clone());
                             h.say("joins the fight!".into(), 'c');
                         }
                     }
-                    _ => self.boss = Some(Boss::new(kind, &cmd, &h.name)),
+                    _ => {
+                        h.engaged = true;
+                        self.boss = Some(Boss::new(kind, &cmd, &h.name));
+                    }
                 }
             }
             GameEvent::BossResult(i, failed) => {
@@ -330,6 +337,8 @@ impl World {
                     q.bosses.push(if failed { '✗' } else { '✓' });
                 }
                 if failed {
+                    // Knocked back: it runs home and tries again next command.
+                    h.engaged = false;
                     b.fail();
                     h.life.bosses_lost += 1;
                     h.life.streak = 0;
@@ -547,6 +556,17 @@ impl World {
         {
             self.boss = None;
         }
+        for h in &mut self.heroes {
+            // A win keeps the fighters there for the death animation; then home.
+            if self.boss.is_none() {
+                h.engaged = false;
+            }
+            h.charge = if h.engaged {
+                (h.charge + dt as f32 / CHARGE_MS).min(1.0)
+            } else {
+                (h.charge - dt as f32 / RETURN_MS).max(0.0)
+            };
+        }
     }
 
     /// Anything animating beyond idle breathing? Drives adaptive FPS (SPEC §8.5).
@@ -559,6 +579,7 @@ impl World {
                     || h.level_up_ms > 0
                     || h.leaving_ms.is_some()
                     || h.rest_ms > 0
+                    || h.charge > 0.0
             })
     }
 }
@@ -860,6 +881,32 @@ mod tests {
         let xp = (w.heroes[a].level, w.heroes[a].xp);
         w.update(1);
         assert_eq!((w.heroes[a].level, w.heroes[a].xp), xp, "paid once");
+    }
+
+    #[test]
+    fn fighters_charge_in_get_knocked_back_and_go_home_after_the_kill() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.apply(GameEvent::BossFight(a, BossKind::Test, "cargo test".into()));
+        w.update(CHARGE_MS as u64);
+        assert_eq!(w.heroes[a].charge, 1.0);
+        assert_eq!(
+            w.heroes[a].anim(),
+            crate::game::hero::Anim::Attack,
+            "in melee"
+        );
+        w.apply(GameEvent::BossResult(a, true));
+        w.update(RETURN_MS as u64);
+        assert_eq!(w.heroes[a].charge, 0.0, "knocked back home");
+        w.apply(GameEvent::BossFight(a, BossKind::Test, "cargo test".into()));
+        w.update(CHARGE_MS as u64);
+        w.apply(GameEvent::BossResult(a, false));
+        w.update(DYING_MS - 1);
+        assert!(w.heroes[a].engaged, "stays for the death animation");
+        w.update(1); // boss gone
+        w.update(RETURN_MS as u64);
+        assert!(!w.heroes[a].engaged);
+        assert_eq!(w.heroes[a].charge, 0.0);
     }
 
     #[test]

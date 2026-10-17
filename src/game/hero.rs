@@ -379,6 +379,10 @@ pub struct Hero {
     pub title_from_prompt: bool,
     /// Tool call id of the boss command this hero is waiting on.
     pub boss_tool: Option<String>,
+    /// In melee with the boss: runs over, swings until its command ends.
+    pub engaged: bool,
+    /// 0.0 at its spot in the line … 1.0 at the boss.
+    pub charge: f32,
     pub life: Lifetime,
     /// Pet id from config `[pets]` (M14).
     pub pet: Option<String>,
@@ -421,6 +425,8 @@ impl Hero {
             combo: 0,
             title_from_prompt: false,
             boss_tool: None,
+            engaged: false,
+            charge: 0.0,
             life: Lifetime::default(),
             pet: None,
             rest_ms: 0,
@@ -439,6 +445,14 @@ impl Hero {
         }
         if self.rest_ms > 0 {
             return Anim::Sit;
+        }
+        // Boss fight: run over, swing in melee, run back (the swing rhythm is the
+        // renderer's).
+        if self.engaged && self.charge >= 1.0 {
+            return Anim::Attack;
+        }
+        if self.charge > 0.0 {
+            return Anim::Walk;
         }
         if let Some((a, _)) = self.action {
             return a.pose();
