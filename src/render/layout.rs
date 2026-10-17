@@ -23,7 +23,8 @@ pub enum Mode {
 
 /// Scene rows needed: 16 px hero = 8 rows + ground; 8 px face = 4 rows + ground.
 const FULL_SCENE: u16 = 9;
-const COMPACT_SCENE: u16 = 5;
+/// Rows for the compact scene: the 12 px chibi heroes stand in it.
+const COMPACT_SCENE: u16 = 6;
 const MAX_DRAWN: usize = 4;
 
 fn footer_rows(w: &World) -> u16 {
@@ -876,24 +877,38 @@ fn slimes(w: &World, scene: Rect, buf: &mut Buffer, right: i32, n: i32, hit: boo
 fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
     fireworks(w, scene, buf);
-    const STEP: u16 = 10;
+    // Small panes get chibi full-body heroes (12 px) instead of just a head.
+    const STEP: u16 = 13;
     let slots = (scene.width.saturating_sub(14) / STEP).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);
     for (i, h) in w.heroes.iter().take(drawn).enumerate() {
         let x = 1 + i as u16 * STEP;
-        // Faces only have `idle`; anything but sitting bobs at walk pace.
-        let ms = if h.anim() == Anim::Sit {
-            0
-        } else {
-            h.anim_ms * 2
+        let tag = match h.anim() {
+            Anim::Walk => "walk",
+            Anim::Sit => "sit",
+            Anim::Attack | Anim::Cast => "attack",
+            _ => "idle",
         };
-        let f = sheet(&format!("face_{}", h.class.id())).frame("idle", ms);
-        let (dx, flip) = walk_off(h);
+        let f = sheet(&format!("mini_{}", h.class.id())).frame(tag, h.anim_ms);
+        let skinned;
+        let f = match crate::game::skins::for_level(h.level).filter(|_| w.skins) {
+            Some(skin) => {
+                skinned = super::sprites::recolor(f, skin.swaps);
+                &skinned
+            }
+            None => f,
+        };
+        let (mut dx, flip) = walk_off(h);
+        if !w.reduced_motion
+            && let Some((action, t)) = h.action()
+        {
+            dx += motion::lunge(action, t) / 2;
+        }
         let py = stand_y(scene, f.h);
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
-        float_text(h, scene, buf, x.saturating_sub(4), py);
+        float_text(h, scene, buf, x.saturating_sub(2), py);
         if let Some((s, fg)) = badge(h) {
-            text(buf, scene.x + x + 7, scene.y, scene.right(), s, fg, 'n');
+            text(buf, scene.x + x + 9, scene.y, scene.right(), s, fg, 'n');
         }
     }
     plus_n(w, scene, buf, 1 + drawn as u16 * STEP, drawn);

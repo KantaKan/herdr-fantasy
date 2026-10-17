@@ -170,6 +170,11 @@ mod tests {
             assert_eq!((s.frames[0].w, s.frames[0].h), (16, 16));
             assert!(s.tags.contains_key("walk"));
             assert_eq!(sheet(&format!("face_{class}")).frames[0].w, 8);
+            let mini = sheet(&format!("mini_{class}"));
+            assert_eq!(mini.frames[0].h, 12);
+            for tag in ["idle", "walk", "attack", "sit"] {
+                assert!(mini.tags.contains_key(tag), "mini_{class} {tag}");
+            }
         }
         assert_eq!(sheet("slime").frames[0].w, 10);
         for id in [

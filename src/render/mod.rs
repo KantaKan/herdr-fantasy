@@ -428,8 +428,8 @@ mod tests {
         let m = |cols, rows| layout::mode(Rect::new(0, 0, cols, rows), &w);
         assert_eq!(m(90, 14), layout::Mode::Full);
         assert_eq!(m(90, 13), layout::Mode::Compact);
-        assert_eq!(m(90, 10), layout::Mode::Compact);
-        assert_eq!(m(90, 9), layout::Mode::Mini);
+        assert_eq!(m(90, 11), layout::Mode::Compact, "6 scene rows for the chibis");
+        assert_eq!(m(90, 10), layout::Mode::Mini);
         assert_eq!(m(39, 30), layout::Mode::Compact);
         assert_eq!(m(29, 30), layout::Mode::Mini);
         // Big hero mode: tall, and the half-size scene fits the party (3 heroes with pets).
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn duck_bubble_shows_in_full_and_compact() {
-        for rows in [15, 10] {
+        for rows in [15, 11] {
             let (mut world, _) = demo::party(1, &crate::config::Config::default().classes);
             world
                 .duck
