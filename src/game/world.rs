@@ -66,6 +66,22 @@ pub const HIT_MS: u64 = 150;
 
 const LAUGH_MS: u64 = 1200;
 const DYING_MS: u64 = 1200;
+/// Party level-up fireworks length.
+pub const FIREWORKS_MS: u64 = 3_000;
+
+/// The party's title and color by level.
+pub fn party_rank(level: u32) -> (&'static str, char) {
+    match level {
+        0..=2 => ("Rookies", 's'),
+        3..=5 => ("Adventurers", 'G'),
+        6..=9 => ("Guild Heroes", 'c'),
+        10..=14 => ("Veterans", 'y'),
+        15..=19 => ("Champions", 'o'),
+        20..=29 => ("Legends", 'r'),
+        _ => ("Mythic", 'p'),
+    }
+}
+
 /// Run to the boss, and back home.
 const CHARGE_MS: f32 = 500.0;
 const RETURN_MS: f32 = 800.0;
@@ -218,6 +234,10 @@ pub struct World {
     /// Config `[pets]` (agent kind → pet) and `skins` (M14).
     pub pets: std::collections::BTreeMap<String, String>,
     pub skins: bool,
+    /// (hero count, party level) last tick: a level-up only counts with the same party.
+    party_seen: (usize, u32),
+    /// Party level-up fireworks time left.
+    pub fireworks_ms: u64,
 }
 
 impl World {
@@ -244,6 +264,8 @@ impl World {
             today: 0,
             pets: Default::default(),
             skins: true,
+            party_seen: (0, 0),
+            fireworks_ms: 0,
         }
     }
 
@@ -252,14 +274,28 @@ impl World {
         self.heroes.len() - 1
     }
 
-    /// Mean hero level, rounded (SPEC §5.2). 0 with no heroes.
-    pub fn party_level(&self) -> u32 {
-        let n = self.heroes.len() as u32;
+    /// Mean hero level counting XP into the next level, e.g. 9.4 (SPEC §5.2).
+    pub fn party_exact(&self) -> f32 {
+        let n = self.heroes.len();
         if n == 0 {
-            return 0;
+            return 0.0;
         }
-        let sum: u32 = self.heroes.iter().map(|h| h.level).sum();
-        (sum + n / 2) / n
+        let sum: f32 = self
+            .heroes
+            .iter()
+            .map(|h| h.level as f32 + h.xp as f32 / super::xp::xp_to_next(h.level).max(1) as f32)
+            .sum();
+        sum / n as f32
+    }
+
+    /// Party level (whole part of `party_exact`); 0 with no heroes.
+    pub fn party_level(&self) -> u32 {
+        self.party_exact() as u32
+    }
+
+    /// How far the party is to its next level, 0.0–1.0.
+    pub fn party_progress(&self) -> f32 {
+        self.party_exact().fract()
     }
 
     /// Move newly finished quests into the log; returns them for the caller to persist.
@@ -477,6 +513,15 @@ impl World {
                 self.headline = self.headlines.pop_front().map(|t| (t, BANNER_MS));
             }
         }
+        self.fireworks_ms = self.fireworks_ms.saturating_sub(dt);
+        let party = (self.heroes.len(), self.party_level());
+        if party.0 == self.party_seen.0 && party.1 > self.party_seen.1 && party.0 > 0 {
+            let text = format!("🎉 Party Lv {} — {}!", party.1, party_rank(party.1).0);
+            tracing::info!("{text}");
+            announce(&mut self.headline, &mut self.headlines, text);
+            self.fireworks_ms = FIREWORKS_MS;
+        }
+        self.party_seen = party;
         for h in &mut self.heroes {
             if self.today > 0 && daily::tick(&mut h.life, &h.name, self.today) {
                 let (name, ..) = daily::progress(&h.life);
@@ -581,6 +626,7 @@ impl World {
                     || h.rest_ms > 0
                     || h.charge > 0.0
             })
+            || self.fireworks_ms > 0
     }
 }
 
@@ -655,13 +701,31 @@ mod tests {
     }
 
     #[test]
-    fn party_level_rounds_mean() {
+    fn party_level_is_the_mean_with_progress() {
         let mut w = World::new("r", "t");
         assert_eq!(w.party_level(), 0);
         let a = w.add_hero("A", Class::Knight);
         w.add_hero("B", Class::Mage);
-        w.heroes[a].level = 2; // (2 + 1) / 2 = 1.5 → 2
-        assert_eq!(w.party_level(), 2);
+        w.heroes[a].level = 2; // (2 + 1) / 2 = 1.5
+        assert_eq!(w.party_level(), 1);
+        assert!((w.party_progress() - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn party_level_up_celebrates_but_a_newcomer_does_not() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.update(1);
+        w.heroes[a].level = 2;
+        w.update(1);
+        assert_eq!(w.headline.as_ref().unwrap().0, "🎉 Party Lv 2 — Rookies!");
+        assert!(w.fireworks_ms > 0);
+        w.headline = None;
+        w.headlines.clear();
+        let b = w.add_hero("B", Class::Mage);
+        w.heroes[b].level = 9; // the mean jumps because someone joined, not a level-up
+        w.update(1);
+        assert!(w.headline.is_none());
     }
 
     #[test]

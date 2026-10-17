@@ -102,10 +102,12 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         w.add_hero("OpenCode", Class::for_agent(classes, "opencode")),
     );
     // Show off M14: a grown dragon and the Crimson skin, a Verdant Mage with a baby owl.
-    for (i, level, pet) in [(k, 12, "dragon"), (m, 6, "owl"), (r, 1, "cat")] {
+    for (i, level, pet) in [(k, 12, "dragon"), (m, 6, "owl"), (r, 2, "cat")] {
         w.heroes[i].level = level;
         w.heroes[i].pet = Some(pet.into());
     }
+    // Codex is one quest from Lv 7, which lifts the party to Lv 7: fireworks.
+    w.heroes[m].xp = super::xp::xp_to_next(6) - 20;
     let test = || Some(BOSS_CMD.to_string());
     let mut script = vec![
         (0, E::Title(k, "fix login redirect bug".into())),

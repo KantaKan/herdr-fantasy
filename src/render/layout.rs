@@ -108,9 +108,27 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
     }
 }
 
+/// Top bar: title and repo on the left; the party crest on the right — rank star,
+/// level, rank title, and a bar toward the next party level.
 fn top_bar(w: &World, area: Rect, buf: &mut Buffer, y: u16) {
-    let right = format!(" Party Lv.{} ", w.party_level());
-    let rx = area.right().saturating_sub(right.chars().count() as u16);
+    let level = w.party_level();
+    let (rank, color) = crate::game::world::party_rank(level);
+    const BAR: usize = 6;
+    let filled = ((w.party_progress() * BAR as f32) as usize).min(BAR);
+    let lv = format!(" Lv {level} ");
+    // Narrow panes drop the title, then the bar.
+    let full = 3 + lv.chars().count() + rank.chars().count() + 1 + BAR + 1;
+    let room = area.width as usize;
+    let (show_rank, show_bar) = (room >= full + 30, room >= lv.len() + BAR + 26);
+    let width = 2
+        + lv.chars().count()
+        + if show_rank {
+            rank.chars().count() + 1
+        } else {
+            0
+        }
+        + if show_bar { BAR + 1 } else { 0 };
+    let rx = area.right().saturating_sub(width as u16);
     let x = text(buf, area.x, y, rx, " herdr fantasy", 'w', 'd');
     text(
         buf,
@@ -121,7 +139,72 @@ fn top_bar(w: &World, area: Rect, buf: &mut Buffer, y: u16) {
         's',
         'd',
     );
-    text(buf, rx, y, area.right(), &right, 'y', 'd');
+    let r = area.right();
+    let mut x = text(buf, rx, y, r, " ★", color, 'd');
+    x = text(buf, x, y, r, &lv, 'y', 'd');
+    if show_rank {
+        x = text(buf, x, y, r, &format!("{rank} "), color, 'd');
+    }
+    if show_bar {
+        x = text(buf, x, y, r, &"█".repeat(filled), 'y', 'd');
+        text(buf, x, y, r, &"░".repeat(BAR - filled), 'S', 'd');
+    }
+}
+
+/// Party level-up fireworks: three rockets climb and burst in the sky, one after another.
+fn fireworks(w: &World, scene: Rect, buf: &mut Buffer) {
+    if w.fireworks_ms == 0 || w.reduced_motion {
+        return;
+    }
+    let t = crate::game::world::FIREWORKS_MS - w.fireworks_ms;
+    let sky = (scene.height as i32 * 2 - 6).max(6);
+    for i in 0..3u64 {
+        let Some(local) = t.checked_sub(i * 800) else {
+            continue;
+        };
+        if local >= 1_200 {
+            continue;
+        }
+        let cx = (scene.width as i32 * [30, 62, 46][i as usize]) / 100;
+        let top = sky / 3 + [0, 2, -1][i as usize];
+        let colors = [['y', 'o'], ['c', 'w'], ['G', 'y']][i as usize];
+        if local < 300 {
+            // The rocket climbing, with a spark trail.
+            let y = sky - ((sky - top) as u64 * local / 300) as i32;
+            pixel(buf, scene, cx, y, 'w');
+            pixel(buf, scene, cx, y + 1, 'o');
+            continue;
+        }
+        // The burst: a ring that grows, then fades to scattered sparks.
+        let p = local - 300;
+        let r = 1 + (p / 90) as i32;
+        // 12 spokes (wider than tall: cells are taller than pixels), each a spark with a
+        // 2-pixel trail; late in the burst the sparks twinkle out.
+        const SPOKES: [(i32, i32); 12] = [
+            (3, 0),
+            (3, 1),
+            (2, 2),
+            (1, 3),
+            (0, 3),
+            (-1, 3),
+            (-3, 0),
+            (-3, -1),
+            (-2, -2),
+            (-1, -3),
+            (0, -3),
+            (1, -3),
+        ];
+        for (k, (dx, dy)) in SPOKES.iter().enumerate() {
+            if p > 600 && (k as u64 + p / 80).is_multiple_of(3) {
+                continue;
+            }
+            for (back, c) in [(0, colors[k % 2]), (1, colors[(k + 1) % 2]), (2, 'p')] {
+                let rr = (r - back).max(0);
+                pixel(buf, scene, cx + dx * rr / 3, top + dy * rr / 3, c);
+            }
+        }
+        pixel(buf, scene, cx, top, 'w');
+    }
 }
 
 fn quest_line(w: &World, area: Rect, buf: &mut Buffer, y: u16) {
@@ -504,6 +587,7 @@ fn blow_lands(h: &Hero) -> bool {
 
 fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
+    fireworks(w, scene, buf);
     let boss_at = boss_sprite(w, scene).map(|(_, x)| x);
     // Pets stand at their hero's front foot, so a party with pets spreads out.
     let step: u16 = if w.heroes.iter().any(|h| h.pet.is_some()) {
@@ -771,6 +855,7 @@ fn slimes(w: &World, scene: Rect, buf: &mut Buffer, right: i32, n: i32, hit: boo
 
 fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
+    fireworks(w, scene, buf);
     const STEP: u16 = 10;
     let slots = (scene.width.saturating_sub(14) / STEP).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);

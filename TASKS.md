@@ -138,6 +138,31 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [x] Tall stage panes (≥ 30 rows) draw heroes, bosses and Summons at 2× size.
   **Done when:** the recap matches the quest log, and a tall pane shows big sprites without breaking the other layouts or the CPU budget. (2026-10-17: recap checked against the demo quest log — 3 quests, 189 XP, 1 won / 2 lost; big mode in a 200×40 preview; `layouts_by_size` covers when it turns on. CPU: the stress bench measured 3.45% in a herdr pane today vs 3.68% for the pre-M11 build in the same pane — no regression, but this machine was busier than when the 0.34% in the README was measured, so the budget wants a re-check on a quiet machine.)
 
+## M16 — Party crest
+- [x] Top bar: "★ Lv 9 Guild Heroes" with a progress bar to the next party level; the party level is the mean hero level including XP into the next level. Ranks: Rookies, Adventurers, Guild Heroes, Veterans, Champions, Legends, Mythic.
+- [x] Party level-up: "🎉 Party Lv N — <rank>!" banner and fireworks in the sky; a hero joining or leaving doesn't count.
+  **Done when:** the demo party levels up with the banner and fireworks. (2026-10-17: Lv 6 → 7 in the demo; `party_level_up_celebrates_but_a_newcomer_does_not`.)
+
+## M17 — Codex rich events
+- [ ] Find and tail Codex session transcripts (`~/.codex/sessions/**.jsonl`); verify the shapes against a real one (SPEC §3.3).
+- [ ] Map Codex tool calls (shell, apply_patch, …) to the same Entry kinds: actions, bosses, XP, compaction.
+  **Done when:** a Codex pane's hero swings, reads, fights bosses and earns XP like a Claude hero.
+
+## M18 — Settings screen + first-run welcome
+- [ ] `s` opens settings: class per agent, pet, skins, memes, reduced motion; saved to config.toml (comments kept).
+- [ ] First run (no saved heroes): a welcome card with the keys and a pointer to `s`.
+  **Done when:** picking a class or pet in the stage changes the hero without editing files.
+
+## M19 — Prebuilt binaries
+- [ ] Release workflow builds Windows, macOS (arm64 + x86_64) and Linux binaries on each tag.
+- [ ] Install uses a prebuilt binary when one matches, else builds with cargo.
+  **Done when:** a fresh machine without Rust installs the plugin.
+
+## M20 — Performance pass
+- [ ] Profile the stress bench; cut per-frame work (redraw only what changed, cache recolors, cheaper idle).
+- [ ] Budget (< 3% CPU, < 30 MB) re-measured in a real terminal on a quiet machine.
+  **Done when:** the stress bench is under budget with numbers in the README.
+
 ## Manual QA checklist (run before each release)
 - [ ] Windows Terminal + native herdr: halfblock, auto-open, ask popup, transcript events.
 - [ ] Ghostty + herdr local: Kitty sprites, auto-open, ask popup, transcript events.

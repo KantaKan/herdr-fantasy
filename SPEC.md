@@ -464,6 +464,10 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
 - `w`: the last 7 days of the quest log (UTC days; each log line's `ended_unix_ms`): quests, XP, bosses won/lost, best run of wins, MVP hero by XP, busiest repo, and quests per day as bars (today last).
 - Big hero mode: when the full-layout scene is ≥ 30 rows tall and the party still fits at half width, the scene is drawn at half size and every pixel doubled (heroes, pets, Summons, bosses, props). Text (floats, badges, quips) is redrawn once at normal size; the headline banner is drawn on top as usual.
 
+### 7.10 Party crest (M16)
+- Party level = the mean hero level counting XP into the next level (9.4 → Lv 9, bar 40%). The top bar shows "★ Lv N <rank>" and a 6-cell bar; narrow panes drop the rank, then the bar. Ranks: Rookies (≤2), Adventurers (3–5), Guild Heroes (6–9), Veterans (10–14), Champions (15–19), Legends (20–29), Mythic (30+), each with its own color.
+- A party level-up with the same heroes shows "🎉 Party Lv N — <rank>!" and 3 s of fireworks (three rockets, bursts with trails). A hero joining or leaving changes the mean but never celebrates.
+
 ### 7.4 Stamina (context window) — "what happens when context is full"
 - `STA% = 100 - context_pct`, where `context_pct = current_context_tokens / context_window_size`.
 - `context_window_size`: config map by model id, default 200,000; if usage exceeds the configured size, grow the assumed size to the next known tier (200k → 1M) instead of showing > 100%.
