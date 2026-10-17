@@ -63,7 +63,7 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
     // Text screens take everything below the top bar, in any layout.
     if matches!(
         view.screen,
-        Screen::Quests | Screen::Sheet | Screen::Help | Screen::Week
+        Screen::Quests | Screen::Sheet | Screen::Help | Screen::Week | Screen::Settings
     ) {
         top_bar(w, area, buf, area.y);
         let body = Rect::new(
@@ -76,6 +76,7 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
             Screen::Quests => screens::quests(w, hero, view.scroll, body, buf),
             Screen::Sheet => screens::character(w, hero, body, buf),
             Screen::Week => screens::week(w, body, buf),
+            Screen::Settings => screens::settings(w, view.selected, view.scroll, body, buf),
             _ => screens::help(body, buf),
         }
         return;
@@ -100,6 +101,9 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
                 }
                 // Last, so a hero's ❗ or a float never cuts through it.
                 banner(w, scene, buf);
+                if w.welcome && crate::game::settings::first_run(w) {
+                    screens::welcome(scene, buf);
+                }
             }
             for (i, h) in w.heroes.iter().take(MAX_DRAWN).enumerate() {
                 footer_row(h, area, buf, scene.bottom() + i as u16, i == view.selected);

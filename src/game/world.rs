@@ -233,11 +233,15 @@ pub struct World {
     pub today: u32,
     /// Config `[pets]` (agent kind → pet) and `skins` (M14).
     pub pets: std::collections::BTreeMap<String, String>,
+    /// Config `[classes]`, kept live so settings changes reach new panes too (M18).
+    pub classes: std::collections::BTreeMap<String, String>,
     pub skins: bool,
     /// (hero count, party level) last tick: a level-up only counts with the same party.
     party_seen: (usize, u32),
     /// Party level-up fireworks time left.
     pub fireworks_ms: u64,
+    /// The first-run welcome card is still up (closed by any key).
+    pub welcome: bool,
 }
 
 impl World {
@@ -263,9 +267,11 @@ impl World {
             memes: true,
             today: 0,
             pets: Default::default(),
+            classes: Default::default(),
             skins: true,
             party_seen: (0, 0),
             fireworks_ms: 0,
+            welcome: true,
         }
     }
 

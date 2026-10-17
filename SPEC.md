@@ -236,7 +236,7 @@ command = ["./target/release/herdr-fantasy", "ask"]
 - Quest line: current quest title of the **focused or most recently active** hero.
 - Scene: heroes left, enemies right. Max 4 heroes drawn; extra shown as `+N`. Up to 3 Summons drawn small beside their Hero, extra as `+N`. The Rubber Duck sits by the campfire.
 - Footer: one row per hero: name, level, XP bar, stamina bar, current activity text.
-- Keys inside stage (only when stage pane is focused): `t` town, `q` quest log, `c` character sheet of selected hero, `w` weekly recap, `←/→` select hero (footer `▶`), `↑/↓` scroll the quest log, `Enter` focus that agent's pane (`agent.focus`), `?` help, `Esc` back to battle, `Ctrl-C` quit. Each screen key toggles. Quest log, sheet, recap and help use the whole pane below the top bar in every layout; the town replaces the battle scene.
+- Keys inside stage (only when stage pane is focused): `t` town, `q` quest log, `c` character sheet of selected hero, `w` weekly recap, `s` settings, `←/→` select hero (footer `▶`), `↑/↓` scroll the quest log, `Enter` focus that agent's pane (`agent.focus`), `?` help, `Esc` back to battle, `Ctrl-C` quit. Each screen key toggles. Quest log, sheet, recap and help use the whole pane below the top bar in every layout; the town replaces the battle scene.
 
 ### 5.3 Compact mode and mini mode (thresholds in §5.2)
 - Compact: smaller scene (heroes as 8×8 faces), footer kept. The boss isn't drawn; its name + HP stay on the quest line.
@@ -468,6 +468,10 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
 ### 7.10 Party crest (M16)
 - Party level = the mean hero level counting XP into the next level (9.4 → Lv 9, bar 40%). The top bar shows "★ Lv N <rank>" and a 6-cell bar; narrow panes drop the rank, then the bar. Ranks: Rookies (≤2), Adventurers (3–5), Guild Heroes (6–9), Veterans (10–14), Champions (15–19), Legends (20–29), Mythic (30+), each with its own color.
 - A party level-up with the same heroes shows "🎉 Party Lv N — <rank>!" and 3 s of fireworks (three rockets, bursts with trails). A hero joining or leaving changes the mean but never celebrates.
+
+### 7.11 Settings and first run (M18)
+- `s` opens settings for the selected hero (Tab picks the next hero): class and pet for its agent kind, skins, memes, reduced motion. ↑/↓ choose a row, ←/→ (or Enter) change it; the change applies at once (every hero of that kind) and is written to config.toml by a line-based edit that keeps comments and other keys. New panes of that kind get the new class.
+- First run: when every hero is Lv 1 with no XP and no quests, a welcome card (what the game is, the keys, `s`) sits in the middle of the scene until any key.
 
 ### 7.4 Stamina (context window) — "what happens when context is full"
 - `STA% = 100 - context_pct`, where `context_pct = current_context_tokens / context_window_size`.

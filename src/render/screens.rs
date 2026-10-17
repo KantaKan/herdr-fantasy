@@ -358,6 +358,94 @@ pub fn week(w: &World, area: Rect, buf: &mut Buffer) {
     }
 }
 
+/// Settings (`s`, M18): ↑/↓ pick a row, ←/→ change it; saved to config.toml.
+pub fn settings(w: &World, hero: usize, row: usize, area: Rect, buf: &mut Buffer) {
+    use crate::game::settings::{ROWS, show};
+    let x0 = area.x + 1;
+    let name = w.heroes.get(hero).map_or("—", |h| h.name.as_str());
+    let x = put(buf, area, x0, area.y, " Settings", 'y', true);
+    put(
+        buf,
+        area,
+        x + 2,
+        area.y,
+        &format!("for {name}  (Tab: next hero)"),
+        's',
+        false,
+    );
+    for (i, r) in ROWS.iter().enumerate() {
+        let y = area.y + 2 + i as u16;
+        let (label, value) = show(w, hero, *r);
+        let here = i == row;
+        put(buf, area, x0, y, if here { "▶" } else { " " }, 'y', true);
+        put(
+            buf,
+            area,
+            x0 + 2,
+            y,
+            &label,
+            if here { 'w' } else { 's' },
+            here,
+        );
+        put(
+            buf,
+            area,
+            x0 + 26,
+            y,
+            &format!("◀ {value} ▶"),
+            if here { 'y' } else { 'c' },
+            here,
+        );
+    }
+    let y = area.y + 3 + ROWS.len() as u16;
+    put(
+        buf,
+        area,
+        x0,
+        y,
+        "↑/↓ choose · ←/→ change · saved to config.toml · Esc back",
+        'S',
+        false,
+    );
+}
+
+/// First-run welcome card in the middle of the scene; any key closes it.
+pub fn welcome(scene: Rect, buf: &mut Buffer) {
+    let lines = [
+        ("Welcome to herdr fantasy!", 'y'),
+        ("Your coding agents are the party.", 'w'),
+        ("They level up as they work.", 'w'),
+        ("", 'w'),
+        ("c hero · w week · t town · q quests", 'c'),
+        ("s settings: class, pet · ? help", 'c'),
+        ("", 'w'),
+        ("press any key", 'S'),
+    ];
+    let w = 40.min(scene.width);
+    let h = (lines.len() as u16 + 2).min(scene.height);
+    let x = scene.x + (scene.width - w) / 2;
+    let y = scene.y + (scene.height - h) / 2;
+    let card = Rect::new(x, y, w, h);
+    for cy in card.top()..card.bottom() {
+        for cx in card.left()..card.right() {
+            buf[(cx, cy)].reset();
+            buf[(cx, cy)].set_bg(crate::render::halfblock::rgb(crate::palette::rgb('k')));
+        }
+    }
+    for (i, (s, c)) in lines.iter().enumerate() {
+        let len = s.chars().count() as u16;
+        put(
+            buf,
+            card,
+            x + (w.saturating_sub(len)) / 2,
+            y + 1 + i as u16,
+            s,
+            *c,
+            i == 0,
+        );
+    }
+}
+
 /// Keys (`?`).
 pub fn help(area: Rect, buf: &mut Buffer) {
     let lines = [
@@ -365,6 +453,7 @@ pub fn help(area: Rect, buf: &mut Buffer) {
         ("q", "quest log"),
         ("c", "character sheet of the selected hero"),
         ("w", "this week's recap"),
+        ("s", "settings: class, pet, skins, memes, motion"),
         ("← →", "select hero"),
         ("Enter", "jump to that agent's pane"),
         ("Esc", "back to battle"),

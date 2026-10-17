@@ -10,6 +10,7 @@ pub mod party;
 pub mod persist;
 pub mod recap;
 pub mod repo;
+pub mod settings;
 pub mod skins;
 pub mod summon;
 pub mod town;

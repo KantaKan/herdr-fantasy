@@ -54,7 +54,7 @@ your agents.
 
 ## In the stage
 
-Click into the stage pane, then: `t` town · `q` quest log · `c` character sheet · `w` weekly recap ·
+Click into the stage pane, then: `t` town · `q` quest log · `c` character sheet · `w` weekly recap · `s` settings ·
 `←/→` pick a hero · `Enter` jump to its agent · `?` help · `Esc` back · `Ctrl-C` quit.
 
 ## Config

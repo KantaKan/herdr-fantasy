@@ -10,6 +10,7 @@ pub enum Screen {
     Town,
     Help,
     Week,
+    Settings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +27,8 @@ pub enum Key {
     Stay,
     /// Focus the selected hero's pane in herdr.
     Focus(usize),
+    /// Settings: change the selected row by ±1 (row index, delta).
+    Change(usize, i32),
 }
 
 impl Default for View {
@@ -45,7 +48,21 @@ impl View {
             v.screen = if v.screen == s { Screen::Battle } else { s };
             v.scroll = 0;
         };
+        if self.screen == Screen::Settings {
+            let last = crate::game::settings::ROWS.len() - 1;
+            match code {
+                KeyCode::Up => self.scroll = self.scroll.saturating_sub(1),
+                KeyCode::Down => self.scroll = (self.scroll + 1).min(last),
+                KeyCode::Left => return Key::Change(self.scroll, -1),
+                KeyCode::Right | KeyCode::Enter => return Key::Change(self.scroll, 1),
+                KeyCode::Char('s') | KeyCode::Esc => self.screen = Screen::Battle,
+                KeyCode::Tab if heroes > 0 => self.selected = (self.selected + 1) % heroes,
+                _ => {}
+            }
+            return Key::Stay;
+        }
         match code {
+            KeyCode::Char('s') => toggle(self, Screen::Settings),
             KeyCode::Char('t') => toggle(self, Screen::Town),
             KeyCode::Char('q') => toggle(self, Screen::Quests),
             KeyCode::Char('c') => toggle(self, Screen::Sheet),

@@ -93,7 +93,16 @@ pub fn run_demo(
             t,
             &mut world,
             bench_state.as_mut(),
-            |_, _| {},
+            |w, v, key| {
+                if let view::Key::Change(row, d) = key {
+                    crate::game::settings::change(
+                        w,
+                        v.selected,
+                        crate::game::settings::ROWS[row],
+                        d,
+                    );
+                }
+            },
             |w, real_ms| {
                 let ms = real_ms * speed + carry;
                 carry = ms.fract();
@@ -131,15 +140,28 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
     world.reduced_motion = config.reduced_motion;
     world.memes = config.memes;
     world.pets.clone_from(&config.pets);
+    world.classes.clone_from(&config.classes);
     world.skins = config.skins;
     sprites::sheets();
     let mut visible = true;
     let mut last_save = Instant::now();
     let result = with_terminal(|t| {
-        let focus = |w: &World, i: usize| {
-            if let Some(seat) = w.heroes.get(i).and_then(|h| h.seat.as_ref()) {
-                let _ = cmds.send(Cmd::Focus(seat.pane_id.clone()));
+        let focus = |w: &mut World, v: &view::View, key: view::Key| match key {
+            view::Key::Focus(i) => {
+                if let Some(seat) = w.heroes.get(i).and_then(|h| h.seat.as_ref()) {
+                    let _ = cmds.send(Cmd::Focus(seat.pane_id.clone()));
+                }
             }
+            view::Key::Change(row, d) => {
+                let row = crate::game::settings::ROWS[row];
+                if let Some(edit) = crate::game::settings::change(w, v.selected, row, d)
+                    && let Some(path) = crate::config::config_path()
+                    && let Err(e) = crate::config::save_edit(&path, &edit)
+                {
+                    tracing::warn!("cannot save {}: {e}", path.display());
+                }
+            }
+            view::Key::Stay => {}
         };
         frame_loop(t, &mut world, None, focus, |w, real_ms| {
             visible = drain(&rx, &cmds, w, config, &mut store, visible);
@@ -178,7 +200,8 @@ fn drain(
         match rx.try_recv() {
             Ok(Update::Party { agents, visible: v }) => {
                 w.banner = None;
-                for name in party::sync(w, &agents, &cfg.classes, store) {
+                let classes = w.classes.clone();
+                for name in party::sync(w, &agents, &classes, store) {
                     if cfg.notify_on_blocked {
                         let _ = cmds.send(Cmd::Notify {
                             title: format!("{name} needs you"),
@@ -268,13 +291,13 @@ fn with_terminal(
 }
 
 /// `step(world, real_ms)` advances the game and returns whether the stage is visible.
-/// `on_focus(world, hero)` runs when the user presses Enter on a hero. With `bench`,
+/// `on_key(world, view, key)` runs for Enter on a hero and settings changes. With `bench`,
 /// the loop measures itself and stops after the bench duration.
 fn frame_loop(
     terminal: &mut ratatui::DefaultTerminal,
     world: &mut World,
     mut bench: Option<&mut (Bench, Instant)>,
-    mut on_focus: impl FnMut(&World, usize),
+    mut on_key: impl FnMut(&mut World, &view::View, view::Key),
     mut step: impl FnMut(&mut World, f64) -> bool,
 ) -> anyhow::Result<()> {
     let mut last = Instant::now();
@@ -307,8 +330,10 @@ fn frame_loop(
                     if ctrl_c {
                         return Ok(());
                     }
-                    if let view::Key::Focus(i) = view.key(k.code, world.heroes.len()) {
-                        on_focus(world, i);
+                    world.welcome = false; // any key closes the welcome card
+                    let key = view.key(k.code, world.heroes.len());
+                    if key != view::Key::Stay {
+                        on_key(world, &view, key);
                     }
                 }
                 Event::Resize(..) => prev = None,
@@ -462,6 +487,26 @@ mod tests {
     }
 
     #[test]
+    fn welcome_card_for_a_new_party_until_a_key() {
+        let mut world = World::new("r", "t");
+        world.add_hero("Claude", crate::game::hero::Class::Knight);
+        let screen = |w: &World| {
+            let mut t = Terminal::new(TestBackend::new(90, 18)).unwrap();
+            t.draw(|f| layout::render(w, &view::View::default(), f.area(), f.buffer_mut()))
+                .unwrap();
+            t.backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|c| c.symbol())
+                .collect::<String>()
+        };
+        assert!(screen(&world).contains("Welcome to herdr fantasy!"));
+        world.welcome = false;
+        assert!(!screen(&world).contains("Welcome"));
+    }
+
+    #[test]
     fn any_size_renders_without_panic() {
         for (w, h) in [
             (1, 1),
@@ -537,6 +582,7 @@ mod preview {
                         Ok("town") => view::Screen::Town,
                         Ok("help") => view::Screen::Help,
                         Ok("week") => view::Screen::Week,
+                        Ok("settings") => view::Screen::Settings,
                         _ => view::Screen::Battle,
                     },
                     ..Default::default()

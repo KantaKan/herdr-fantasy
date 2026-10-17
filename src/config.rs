@@ -176,6 +176,86 @@ fn merge<T: DeserializeOwned>(
     }
 }
 
+/// Write one setting into config.toml, keeping everything else (comments too):
+/// replaces the key's line, or adds it under its table / before the first table.
+pub fn save_edit(
+    path: &std::path::Path,
+    edit: &crate::game::settings::Edit,
+) -> std::io::Result<()> {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let out = apply_edit(&text, edit);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(path, out)
+}
+
+fn apply_edit(text: &str, edit: &crate::game::settings::Edit) -> String {
+    use crate::game::settings::Edit;
+    let mut lines: Vec<String> = text.lines().map(String::from).collect();
+    let is_key = |l: &str, key: &str| {
+        let l = l.trim_start();
+        let k = l.split('=').next().unwrap_or("").trim().trim_matches('"');
+        !l.starts_with('#') && l.contains('=') && k == key
+    };
+    let first_table = lines
+        .iter()
+        .position(|l| l.trim_start().starts_with('['))
+        .unwrap_or(lines.len());
+    match edit {
+        Edit::Flag { key, value } => {
+            let new = format!("{key} = {value}");
+            match lines[..first_table].iter().position(|l| is_key(l, key)) {
+                Some(i) => lines[i] = new,
+                None => lines.insert(first_table, new),
+            }
+        }
+        Edit::Table { table, key, value } => {
+            let header = format!("[{table}]");
+            let start = lines.iter().position(|l| l.trim() == header);
+            let new = value.as_ref().map(|v| {
+                let k = if key
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                {
+                    key.clone()
+                } else {
+                    format!("\"{key}\"")
+                };
+                format!("{k} = \"{v}\"")
+            });
+            match start {
+                Some(s) => {
+                    let end = lines[s + 1..]
+                        .iter()
+                        .position(|l| l.trim_start().starts_with('['))
+                        .map_or(lines.len(), |e| s + 1 + e);
+                    match (lines[s + 1..end].iter().position(|l| is_key(l, key)), new) {
+                        (Some(i), Some(n)) => lines[s + 1 + i] = n,
+                        (Some(i), None) => {
+                            lines.remove(s + 1 + i);
+                        }
+                        (None, Some(n)) => lines.insert(s + 1, n),
+                        (None, None) => {}
+                    }
+                }
+                None => {
+                    if let Some(n) = new {
+                        if lines.last().is_some_and(|l| !l.trim().is_empty()) {
+                            lines.push(String::new());
+                        }
+                        lines.push(header);
+                        lines.push(n);
+                    }
+                }
+            }
+        }
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
+}
+
 pub fn config_path() -> Option<PathBuf> {
     let dir = match std::env::var_os("HERDR_PLUGIN_CONFIG_DIR") {
         Some(d) => PathBuf::from(d),
@@ -279,6 +359,59 @@ codex = \"unicorn\"
         assert!(!c.pets.contains_key("codex"));
         assert!(!c.skins);
         assert_eq!(w.len(), 1, "{w:?}");
+    }
+
+    #[test]
+    fn edits_keep_comments_and_other_keys() {
+        use crate::game::settings::Edit;
+        let text = "# my settings\nmemes = true\n\n[classes]\n# me\nclaude = \"Wild Card\"\n";
+        let t = apply_edit(
+            text,
+            &Edit::Flag {
+                key: "memes",
+                value: false,
+            },
+        );
+        assert!(t.contains("# my settings\nmemes = false"));
+        let t = apply_edit(
+            &t,
+            &Edit::Flag {
+                key: "skins",
+                value: false,
+            },
+        );
+        assert!(t.find("skins = false").unwrap() < t.find("[classes]").unwrap());
+        let t = apply_edit(
+            &t,
+            &Edit::Table {
+                table: "classes",
+                key: "claude".into(),
+                value: Some("Mage".into()),
+            },
+        );
+        assert!(t.contains("# me\nclaude = \"Mage\""));
+        let t = apply_edit(
+            &t,
+            &Edit::Table {
+                table: "pets",
+                key: "claude".into(),
+                value: Some("owl".into()),
+            },
+        );
+        assert!(t.ends_with("[pets]\nclaude = \"owl\"\n"));
+        let t = apply_edit(
+            &t,
+            &Edit::Table {
+                table: "pets",
+                key: "claude".into(),
+                value: None,
+            },
+        );
+        assert!(!t.contains("owl"));
+        let (c, w) = Config::parse(&t);
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(c.classes["claude"], "Mage");
+        assert!(!c.memes && !c.skins);
     }
 
     #[test]
