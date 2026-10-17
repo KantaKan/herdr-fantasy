@@ -626,3 +626,60 @@ mod preview {
         }
     }
 }
+
+#[cfg(test)]
+mod perf {
+    use super::*;
+
+    /// `cargo test --release perf_split -- --ignored --nocapture`: where a stress frame goes.
+    #[test]
+    #[ignore]
+    fn perf_split() {
+        let (mut world, mut d) = demo::stress(1, &crate::config::Config::default().classes);
+        let area = Rect::new(0, 0, 120, 30);
+        let (mut step, mut draw) = (Duration::ZERO, Duration::ZERO);
+        for _ in 0..2_000 {
+            let t = Instant::now();
+            d.advance(66, &mut world);
+            world.drain_finished();
+            step += t.elapsed();
+            let t = Instant::now();
+            let mut buf = Buffer::empty(area);
+            layout::render(&world, &view::View::default(), area, &mut buf);
+            draw += t.elapsed();
+        }
+        println!(
+            "step {:?}/frame, render {:?}/frame",
+            step / 2_000,
+            draw / 2_000
+        );
+    }
+
+    /// Which rows change between frames (each changed cell is terminal output).
+    #[test]
+    #[ignore]
+    fn perf_changed_cells() {
+        let (mut world, mut d) = demo::stress(1, &crate::config::Config::default().classes);
+        let area = Rect::new(0, 0, 120, 30);
+        let mut prev = Buffer::empty(area);
+        let mut per_row = vec![0u64; 30];
+        let frames = 600;
+        for _ in 0..frames {
+            d.advance(66, &mut world);
+            world.drain_finished();
+            let mut buf = Buffer::empty(area);
+            layout::render(&world, &view::View::default(), area, &mut buf);
+            for (i, (a, b)) in buf.content.iter().zip(prev.content.iter()).enumerate() {
+                if a != b {
+                    per_row[i / 120] += 1;
+                }
+            }
+            prev = buf;
+        }
+        let total: u64 = per_row.iter().sum();
+        println!("changed cells/frame: {}", total / frames);
+        for (y, n) in per_row.iter().enumerate() {
+            println!("row {y:2}: {}", n / frames);
+        }
+    }
+}

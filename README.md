@@ -87,9 +87,13 @@ Terminal inside herdr, 60 s:
 
 | | measured | budget (SPEC §8.5) |
 |---|---|---|
-| CPU | 0.34% of one core (process), 0.65% (loop's own timing) | < 3% in battle |
-| Memory | 15.3 MB peak RSS | < 30 MB |
-| Frame | 0.5 ms average, 4.9 ms worst | — |
+| CPU | 0.94% of one core (process CPU time), 1.0% (loop's own timing) | < 3% in battle |
+| Memory | 24.3 MB working set | < 30 MB |
+| Frame | 0.8 ms average, 3.2 ms worst | — |
+
+(v0.3, 2026-10-17, with pets, skins and melee. The loop's own timing is wall-clock and
+includes waiting on the terminal, so on a busy machine it reads high; process CPU time
+is the real cost. Rendering a frame takes ~0.1 ms; the rest is terminal output.)
 
 The live stage with one real Claude agent and its transcript: 0.7% of one core, 16 MB.
 Hidden stages draw nothing.

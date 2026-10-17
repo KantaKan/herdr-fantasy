@@ -159,9 +159,9 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** a fresh machine without Rust installs the plugin.
 
 ## M20 — Performance pass
-- [ ] Profile the stress bench; cut per-frame work (redraw only what changed, cache recolors, cheaper idle).
-- [ ] Budget (< 3% CPU, < 30 MB) re-measured in a real terminal on a quiet machine.
-  **Done when:** the stress bench is under budget with numbers in the README.
+- [x] Profile the stress bench; cut per-frame work (redraw only what changed, cache recolors, cheaper idle).
+- [x] Budget (< 3% CPU, < 30 MB) re-measured in a real terminal on a quiet machine.
+  **Done when:** the stress bench is under budget with numbers in the README. (2026-10-17: profiled with `perf_split` / `perf_changed_cells` (ignored tests): update 7 µs, render 110 µs per frame, ~280 changed cells — the rest is terminal output, which only redraws changed cells already. Real process CPU 0.94%, 24.3 MB. Nothing needed cutting; the earlier 3.45% was wall-clock time on a busy machine.)
 
 ## Manual QA checklist (run before each release)
 - [ ] Windows Terminal + native herdr: halfblock, auto-open, ask popup, transcript events.
