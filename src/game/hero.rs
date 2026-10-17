@@ -140,13 +140,15 @@ impl Action {
     /// How long the action plays.
     pub fn duration_ms(self) -> u64 {
         match self {
+            // Long enough to read the caption and see the prop (fast tool bursts queue
+            // up and turn into a combo instead).
             Action::Attack => 3 * 80,
             Action::Cast => 4 * 100,
-            Action::Open => 4 * 120,
-            Action::Craft => 600,
-            Action::Fireball | Action::Bird | Action::PigeonOut | Action::PigeonIn => 800,
-            Action::Study | Action::Scroll | Action::Spellbook | Action::Doze => 1_000,
-            Action::Scout | Action::Seal | Action::Shop => 700,
+            Action::Open => 1_200,
+            Action::Craft => 1_200,
+            Action::Fireball | Action::Bird | Action::PigeonOut | Action::PigeonIn => 1_600,
+            Action::Study | Action::Scroll | Action::Spellbook | Action::Doze => 2_000,
+            Action::Scout | Action::Seal | Action::Shop => 1_600,
         }
     }
 
@@ -162,6 +164,27 @@ impl Action {
     }
 
     /// Prop sprite (`prop_<name>`) and how it moves.
+    /// Short label over the hero's head while it plays, so you can tell what it is.
+    pub fn caption(self) -> &'static str {
+        match self {
+            Action::Attack => "⚔ edit",
+            Action::Cast => "✨ run",
+            Action::Open => "📦 open file",
+            Action::Study => "📖 grep",
+            Action::Scroll => "📜 read",
+            Action::Scout => "🔭 look around",
+            Action::Bird => "🐦 fetch",
+            Action::Seal => "🔏 commit",
+            Action::PigeonOut => "📨 push",
+            Action::PigeonIn => "📩 pull",
+            Action::Shop => "💰 install",
+            Action::Fireball => "🔥 delete",
+            Action::Craft => "🔨 make",
+            Action::Doze => "💤 wait",
+            Action::Spellbook => "✨ skill",
+        }
+    }
+
     pub fn prop(self) -> Option<(&'static str, Motion)> {
         Some(match self {
             Action::Attack | Action::Cast | Action::Doze => return None,

@@ -363,6 +363,7 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 - Boss HP is cosmetic: starts full; each failed attempt knocks off 25% (so persistence visibly pays off); victory always finishes it.
 - "First-try" = victory without a failure on the same boss type within the same quest.
 
+- **Readable actions** (v0.3.1): while an action plays, a caption floats over the hero (`📖 grep`, `📜 read`, `📦 open file`, `🔭 look around`, `🔏 commit`, `📨 push`, `📩 pull`, `🐦 fetch`, `💰 install`, `🔥 delete`, `🔨 make`, `✨ skill`, `✨ run`, `⚔ edit`, `💤 wait`) unless a float is showing; props are drawn at 2×; reading/search/git actions last 1.2–2 s.
 - **Melee** (v0.2.2): a hero whose boss command is running runs over to the boss (0.5 s, eased) and swings in melee: the 3 attack frames, then the wind-up held, every 0.6 s; each strike frame knocks the boss back a column with a spark at the point of contact. Team fighters line up behind the first. A failed run knocks the hero home (0.8 s, facing back); a win keeps it there for the death animation, then it runs home. Pets run along and do their trick. `reduced_motion` keeps everyone in place.
 
 ### 6.4 Quest lifecycle

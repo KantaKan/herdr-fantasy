@@ -156,7 +156,7 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 ## M19 — Prebuilt binaries
 - [x] Release workflow builds Windows, macOS (arm64 + x86_64) and Linux binaries on each tag.
 - [x] Install uses a prebuilt binary when one matches, else builds with cargo.
-  **Done when:** a fresh machine without Rust installs the plugin.
+  **Done when:** a fresh machine without Rust installs the plugin. (2026-10-17: v0.3.0's release workflow attached all 4 binaries + SHA-256 files; `herdr plugin install` on Windows took 7 s and used the downloaded binary — nothing compiled. Linux/macOS install scripts not yet run on a real machine.)
 
 ## M20 — Performance pass
 - [x] Profile the stress bench; cut per-frame work (redraw only what changed, cache recolors, cheaper idle).

@@ -119,6 +119,16 @@ pub fn sheets() -> &'static HashMap<&'static str, Sheet> {
     })
 }
 
+/// `f` at twice the size (each pixel 2×2), for props that must read at a glance.
+pub fn scale2(f: &Frame) -> Frame {
+    let (w, h) = (f.w * 2, f.h * 2);
+    let px = (0..h)
+        .flat_map(|y| (0..w).map(move |x| (x, y)))
+        .map(|(x, y)| f.px[((y / 2) * f.w + x / 2) as usize])
+        .collect();
+    Frame { w, h, px, ms: f.ms }
+}
+
 /// A copy of `f` with palette colors swapped (hero skins, M14).
 pub fn recolor(f: &Frame, swaps: &[(char, char)]) -> Frame {
     let map: Vec<([u8; 3], [u8; 3])> = swaps

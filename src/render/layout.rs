@@ -356,14 +356,29 @@ fn prop(h: &Hero, scene: Rect, buf: &mut Buffer, x: i32, py: i32) {
     let Some((name, motion)) = action.prop() else {
         return;
     };
-    let f = sheet(&format!("prop_{name}")).frame("a", h.anim_ms);
+    // Drawn at 2× so a book, a scroll or a pigeon reads at a glance.
+    let big = super::sprites::scale2(sheet(&format!("prop_{name}")).frame("a", h.anim_ms));
     let (px, ppy) = match motion {
-        Motion::Hand => (x + 12, py + 6),
-        Motion::Out => (x + 12 + (t * 24.0) as i32, py + 4 - (t * 6.0) as i32),
-        Motion::In => (x + 36 - (t * 24.0) as i32, py + 6),
-        Motion::Rise => (x + 4, py - (t * 8.0) as i32),
+        Motion::Hand => (x + 11, py),
+        Motion::Out => (x + 11 + (t * 30.0) as i32, py - (t * 6.0) as i32),
+        Motion::In => (x + 41 - (t * 30.0) as i32, py),
+        Motion::Rise => (x, py - 10 - (t * 6.0) as i32),
     };
-    halfblock::draw(buf, scene, f, px, ppy, false);
+    halfblock::draw(buf, scene, &big, px, ppy, false);
+}
+
+/// What the hero is doing, over its head while the action plays (`📖 grep`, `🕊 push`).
+fn caption(h: &Hero, scene: Rect, buf: &mut Buffer, x: i32, py: i32) {
+    let Some((action, _)) = h.action() else {
+        return;
+    };
+    if h.float.is_some() {
+        return; // the float (damage, +XP) says it this moment
+    }
+    let s = action.caption();
+    let y = (scene.y as i32 + py / 2 - 1).max(scene.y as i32 + 1) as u16;
+    let cx = (scene.x as i32 + x + 8 - s.chars().count() as i32 / 2).max(scene.x as i32) as u16;
+    text_on(buf, cx, y, scene.right(), s, 'y');
 }
 
 /// Damage numbers, "learned: …", combos: rise two rows over the head, then vanish.
@@ -665,6 +680,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
         pet(w, h, scene, buf, x as i32 + dx + 12, py - ground, flip);
         prop(h, scene, buf, x as i32 + dx, py);
+        caption(h, scene, buf, x as i32 + dx, py);
         condition(w, h, scene, buf, x as i32 + dx, py, i as u64);
         float_text(h, scene, buf, x, py);
         if let Some((s, fg)) = badge(h) {
