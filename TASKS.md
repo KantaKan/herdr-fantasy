@@ -144,8 +144,8 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** the demo party levels up with the banner and fireworks. (2026-10-17: Lv 6 → 7 in the demo; `party_level_up_celebrates_but_a_newcomer_does_not`.)
 
 ## M17 — Codex rich events
-- [ ] Find and tail Codex session transcripts (`~/.codex/sessions/**.jsonl`); verify the shapes against a real one (SPEC §3.3).
-- [ ] Map Codex tool calls (shell, apply_patch, …) to the same Entry kinds: actions, bosses, XP, compaction.
+- [ ] Find and tail Codex session transcripts (`~/.codex/sessions/**.jsonl`); verify the shapes against a real one (SPEC §3.3). (Envelope verified; payload shapes still need a real session with tool calls — the auto-mode safety check blocked running `codex exec --full-auto` from here.)
+- [x] Map Codex tool calls (shell, apply_patch, …) to the same Entry kinds: actions, bosses, XP, compaction. (`transcript/codex.rs`; tails pick a parser per agent kind; rollout found by session id and cached.)
   **Done when:** a Codex pane's hero swings, reads, fights bosses and earns XP like a Claude hero.
 
 ## M18 — Settings screen + first-run welcome

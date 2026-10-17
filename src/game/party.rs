@@ -310,9 +310,13 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
                 output,
                 model,
                 message,
+                window,
             } => {
                 let h = &mut w.heroes[i];
-                h.context_used = Some(context_pct(*context, model.as_deref(), windows));
+                h.context_used = Some(match window {
+                    Some(win) => ((context * 100) / (*win).max(1)).min(100) as u8,
+                    None => context_pct(*context, model.as_deref(), windows),
+                });
                 if f.history {
                     // Learn the baseline only; history never earns XP.
                     h.usage(*context, 0, None);
@@ -527,6 +531,7 @@ mod tests {
                     output: 0,
                     model: None,
                     message: None,
+                    window: None,
                 },
                 tool(
                     "Edit",
@@ -572,6 +577,7 @@ mod tests {
                     output: 0,
                     model: None,
                     message: None,
+                    window: None,
                 },
             ],
             true,

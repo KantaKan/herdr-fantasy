@@ -36,6 +36,8 @@ pub enum Entry {
         output: u64,
         model: Option<String>,
         message: Option<String>,
+        /// The context window, when the agent reports it (Codex does).
+        window: Option<u64>,
     },
     /// The conversation was compacted; new context size if known.
     Compact { post_tokens: Option<u64> },
@@ -121,6 +123,7 @@ pub fn parse(line: &str) -> Vec<Entry> {
                     output: n("output_tokens"),
                     model: msg["model"].as_str().map(String::from),
                     message: msg["id"].as_str().map(String::from),
+                    window: None,
                 });
             }
         }

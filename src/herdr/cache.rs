@@ -20,6 +20,10 @@ use crate::game::hero::Status;
 use crate::game::party::LiveAgent;
 use crate::game::repo::{self, Repo};
 use crate::transcript::claude::{self, Entry};
+use crate::transcript::codex;
+
+/// Turns one transcript line into entries (Claude or Codex format).
+type Parser = fn(&str) -> Vec<Entry>;
 use crate::transcript::tail::Tail;
 
 const VISIBLE_POLL: Duration = Duration::from_millis(200);
@@ -145,26 +149,61 @@ fn claude_dir() -> PathBuf {
         })
 }
 
-/// Transcript file per live Claude agent in the party (SPEC §3.3).
+/// Transcript file and parser per live Claude or Codex agent in the party (SPEC §3.3).
+/// `codex_file` maps a Codex session id to its rollout file (it searches, so the caller
+/// caches).
 pub fn transcripts(
     snap: &Snapshot,
     me: Option<&Me>,
     all_workspaces: bool,
     claude_dir: &Path,
-) -> Vec<(String, PathBuf)> {
+    codex_file: &mut dyn FnMut(&str) -> Option<PathBuf>,
+) -> Vec<(String, PathBuf, Parser)> {
     snap.agents
         .iter()
         .filter(|a| all_workspaces || me.is_none_or(|m| a.workspace_id == m.workspace))
-        .filter(|a| a.agent.as_deref() == Some("claude"))
         .filter_map(|a| {
             let s = a.agent_session.as_ref()?;
             let cwd = a.cwd.as_deref().unwrap_or(".");
-            Some((
-                a.pane_id.clone(),
-                claude::transcript_path(&s.kind, &s.value, cwd, claude_dir),
-            ))
+            let (path, parse): (PathBuf, Parser) = match a.agent.as_deref()? {
+                "claude" => (
+                    claude::transcript_path(&s.kind, &s.value, cwd, claude_dir),
+                    claude::parse,
+                ),
+                "codex" if s.kind == "path" => (s.value.clone().into(), codex::parse),
+                "codex" => (codex_file(&s.value)?, codex::parse),
+                _ => return None,
+            };
+            Some((a.pane_id.clone(), path, parse))
         })
         .collect()
+}
+
+/// Codex session id → rollout file, searched at most every 2 s while missing (the file
+/// can appear a moment after the session starts).
+#[derive(Default)]
+struct CodexFiles {
+    found: HashMap<String, PathBuf>,
+    tried: HashMap<String, std::time::Instant>,
+}
+
+impl CodexFiles {
+    fn get(&mut self, dir: &Path, id: &str) -> Option<PathBuf> {
+        if let Some(p) = self.found.get(id) {
+            return Some(p.clone());
+        }
+        if self
+            .tried
+            .get(id)
+            .is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(2))
+        {
+            return None;
+        }
+        self.tried.insert(id.to_string(), std::time::Instant::now());
+        let p = codex::find_session(dir, id)?;
+        self.found.insert(id.to_string(), p.clone());
+        Some(p)
+    }
 }
 
 /// Follows each agent's transcript; remembers which file each pane was on.
@@ -174,17 +213,17 @@ struct Tails {
 }
 
 impl Tails {
-    fn poll(&mut self, wanted: Vec<(String, PathBuf)>, tx: &Sender<Update>) -> bool {
+    fn poll(&mut self, wanted: Vec<(String, PathBuf, Parser)>, tx: &Sender<Update>) -> bool {
         self.by_pane
-            .retain(|pane, _| wanted.iter().any(|(p, _)| p == pane));
-        for (pane, path) in wanted {
+            .retain(|pane, _| wanted.iter().any(|(p, ..)| p == pane));
+        for (pane, path, parse) in wanted {
             let known = self.by_pane.get(&pane).map(|(p, _)| p.clone());
             if known.as_ref() != Some(&path) {
                 // First sight of this file (missing ones are retried next poll).
                 let Ok((tail, history)) = Tail::open(&path) else {
                     continue;
                 };
-                let entries = history.iter().flat_map(|l| claude::parse(l)).collect();
+                let entries = history.iter().flat_map(|l| parse(l)).collect();
                 let u = Update::Transcript {
                     pane_id: pane.clone(),
                     entries,
@@ -205,7 +244,7 @@ impl Tails {
                     continue;
                 }
             };
-            let entries: Vec<Entry> = lines.iter().flat_map(|l| claude::parse(l)).collect();
+            let entries: Vec<Entry> = lines.iter().flat_map(|l| parse(l)).collect();
             if !entries.is_empty() {
                 let u = Update::Transcript {
                     pane_id: pane,
@@ -244,6 +283,8 @@ fn run(tx: Sender<Update>, cmds: Receiver<Cmd>, me: Option<Me>, all_workspaces: 
     let mut last: Option<Update> = None;
     let mut tails = Tails::default();
     let claude_dir = claude_dir();
+    let codex_dir = codex::codex_dir();
+    let mut codex_files = CodexFiles::default();
     let mut surveyed: HashMap<String, std::time::Instant> = HashMap::new();
     loop {
         let mut send = |u: Update| {
@@ -310,7 +351,9 @@ fn run(tx: Sender<Update>, cmds: Receiver<Cmd>, me: Option<Me>, all_workspaces: 
             }) {
                 return; // stage exited
             }
-            let wanted = transcripts(&snap, me.as_ref(), all_workspaces, &claude_dir);
+            let wanted = transcripts(&snap, me.as_ref(), all_workspaces, &claude_dir, &mut |id| {
+                codex_files.get(&codex_dir, id)
+            });
             if !tails.poll(wanted, &tx) {
                 return;
             }
@@ -390,7 +433,7 @@ mod tests {
     #[test]
     fn transcript_paths_for_claude_agents() {
         let snap = fixture();
-        let t = transcripts(&snap, None, true, Path::new("/claude"));
+        let t = transcripts(&snap, None, true, Path::new("/claude"), &mut |_| None);
         let claudes = snap
             .agents
             .iter()
@@ -412,7 +455,7 @@ mod tests {
         std::fs::write(&b, prompt("fresh")).unwrap();
         let (tx, rx) = mpsc::channel();
         let mut tails = Tails::default();
-        assert!(tails.poll(vec![("p".into(), a.clone())], &tx));
+        assert!(tails.poll(vec![("p".into(), a.clone(), claude::parse)], &tx));
         let first = rx.try_recv().unwrap();
         assert!(
             matches!(&first, Update::Transcript { history: true, new_chapter: false, entries, .. } if entries.len() == 1)
@@ -425,12 +468,12 @@ mod tests {
             .unwrap()
             .write_all(prompt("new").as_bytes())
             .unwrap();
-        tails.poll(vec![("p".into(), a.clone())], &tx);
+        tails.poll(vec![("p".into(), a.clone(), claude::parse)], &tx);
         assert!(matches!(
             rx.try_recv().unwrap(),
             Update::Transcript { history: false, .. }
         ));
-        tails.poll(vec![("p".into(), b)], &tx);
+        tails.poll(vec![("p".into(), b, claude::parse)], &tx);
         assert!(matches!(
             rx.try_recv().unwrap(),
             Update::Transcript {
