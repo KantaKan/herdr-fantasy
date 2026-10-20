@@ -239,7 +239,7 @@ command = ["./target/release/herdr-fantasy", "ask"]
 - Keys inside stage (only when stage pane is focused): `t` town, `q` quest log, `c` character sheet of selected hero, `w` weekly recap, `s` settings, `←/→` select hero (footer `▶`), `↑/↓` scroll the quest log, `Enter` focus that agent's pane (`agent.focus`), `?` help, `Esc` back to battle, `Ctrl-C` quit. Each screen key toggles. Quest log, sheet, recap and help use the whole pane below the top bar in every layout; the town replaces the battle scene.
 
 ### 5.3 Compact mode and mini mode (thresholds in §5.2)
-- Compact: smaller scene with **chibi full-body heroes** (`mini_<class>`, 12×12, `tools/gen_mini.py`: big head, the class's headgear, colors and weapon; idle, walk, attack, sit; skins apply), footer kept. The boss isn't drawn; its name + HP stay on the quest line.
+- Compact: smaller scene with **chibi full-body heroes** (`mini_<class>`, 12×12, `tools/gen_mini.py`: big head, the class's headgear, colors and weapon; idle, walk, attack, sit; skins apply), footer kept. Pets walk beside their heroes as babies; the boss is drawn at the size that fits (usually little), and fighters charge it in melee as in full mode.
 - Mini: no scene. One line per hero: face glyph, state icon, XP bar, activity. Still animates the face glyph.
 - Width < 50 cols: drop stamina bar text, then activity text.
 

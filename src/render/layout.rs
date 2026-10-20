@@ -579,7 +579,7 @@ fn big_scene(w: &World, scene: Rect, buf: &mut Buffer) {
 /// under the sky.
 fn boss_sprite(w: &World, scene: Rect) -> Option<(&'static super::sprites::Frame, i32)> {
     let b = w.boss.as_ref()?;
-    let room = (scene.height as i32 - 1) * 2;
+    let room = scene.height as i32 * 2 - if scene.height > 8 { 2 } else { 0 };
     let mut tier = b.tier;
     let mut s = sheet(&format!("boss_{}_{}", b.id, tier.id()));
     while (s.frames[0].h as i32) > room
@@ -603,6 +603,52 @@ fn swing_ms(h: &Hero) -> u64 {
 /// Is a melee blow landing on the boss right now (the strike frame)?
 fn blow_lands(h: &Hero) -> bool {
     h.engaged && h.charge >= 1.0 && (80..160).contains(&(h.anim_ms % SWING_MS))
+}
+
+/// The boss with its hit flash, shake, and melee blows (knock-back + spark). Returns
+/// whether a boss was drawn.
+fn draw_boss(w: &World, scene: Rect, buf: &mut Buffer) -> bool {
+    let (Some(b), Some((f, bx))) = (&w.boss, boss_sprite(w, scene)) else {
+        return false;
+    };
+    // Hit: one white frame, then a ±1 column shake while it lasts (SPEC §8.4).
+    let hit = b.hit_ms > 0 && !w.reduced_motion;
+    let white;
+    let f = if hit && b.hit_ms > crate::game::world::HIT_MS - 60 {
+        white = crate::render::sprites::Frame {
+            w: f.w,
+            h: f.h,
+            px: f.px.iter().map(|p| p.map(|_| palette::rgb('w'))).collect(),
+            ms: f.ms,
+        };
+        &white
+    } else {
+        f
+    };
+    // A landing melee blow knocks it back a column and throws a spark.
+    let blow = !w.reduced_motion && w.heroes.iter().any(blow_lands);
+    let shake = if hit {
+        [1, -1][((b.hit_ms / 40) % 2) as usize]
+    } else if blow {
+        1
+    } else {
+        0
+    };
+    let by = stand_y(scene, f.h);
+    halfblock::draw(buf, scene, f, bx + shake, by, false);
+    if blow {
+        let cy = by + f.h as i32 / 2;
+        for (dx, dy, c) in [
+            (0, 0, 'w'),
+            (-1, -1, 'y'),
+            (1, 1, 'y'),
+            (-1, 1, 'o'),
+            (1, -1, 'o'),
+        ] {
+            pixel(buf, scene, bx + 1 + dx, cy + dy, c);
+        }
+    }
+    true
 }
 
 fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
@@ -705,44 +751,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     plus_n(w, scene, buf, 1 + drawn as u16 * step, drawn);
 
     let right = scene.width as i32;
-    if let (Some(b), Some((f, bx))) = (&w.boss, boss_sprite(w, scene)) {
-        // Hit: one white frame, then a ±1 column shake while it lasts (SPEC §8.4).
-        let hit = b.hit_ms > 0 && !w.reduced_motion;
-        let white;
-        let f = if hit && b.hit_ms > crate::game::world::HIT_MS - 60 {
-            white = crate::render::sprites::Frame {
-                w: f.w,
-                h: f.h,
-                px: f.px.iter().map(|p| p.map(|_| palette::rgb('w'))).collect(),
-                ms: f.ms,
-            };
-            &white
-        } else {
-            f
-        };
-        // A landing melee blow knocks it back a column and throws a spark.
-        let blow = !w.reduced_motion && w.heroes.iter().any(blow_lands);
-        let shake = if hit {
-            [1, -1][((b.hit_ms / 40) % 2) as usize]
-        } else if blow {
-            1
-        } else {
-            0
-        };
-        let by = stand_y(scene, f.h);
-        halfblock::draw(buf, scene, f, bx + shake, by, false);
-        if blow {
-            let cy = by + f.h as i32 / 2;
-            for (dx, dy, c) in [
-                (0, 0, 'w'),
-                (-1, -1, 'y'),
-                (1, 1, 'y'),
-                (-1, 1, 'o'),
-                (1, -1, 'o'),
-            ] {
-                pixel(buf, scene, bx + 1 + dx, cy + dy, c);
-            }
-        }
+    if draw_boss(w, scene, buf) {
     } else if camp(w) {
         campfire(w, scene, buf, right, true);
     } else {
@@ -877,12 +886,15 @@ fn slimes(w: &World, scene: Rect, buf: &mut Buffer, right: i32, n: i32, hit: boo
 fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
     fireworks(w, scene, buf);
-    // Small panes get chibi full-body heroes (12 px) instead of just a head.
-    const STEP: u16 = 13;
-    let slots = (scene.width.saturating_sub(14) / STEP).clamp(1, MAX_DRAWN as u16);
+    // Small panes get chibi full-body heroes (12 px) instead of just a head; baby pets
+    // walk beside them, and fighters charge the (smallest) boss.
+    let pets = w.heroes.iter().any(|h| h.pet.is_some());
+    let step: u16 = if pets { 21 } else { 13 };
+    let boss_at = boss_sprite(w, scene).map(|(_, x)| x);
+    let slots = (scene.width.saturating_sub(14) / step).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);
     for (i, h) in w.heroes.iter().take(drawn).enumerate() {
-        let x = 1 + i as u16 * STEP;
+        let x = 1 + i as u16 * step;
         let tag = match h.anim() {
             Anim::Walk => "walk",
             Anim::Sit => "sit",
@@ -898,21 +910,51 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
             }
             None => f,
         };
-        let (mut dx, flip) = walk_off(h);
+        let (mut dx, mut flip) = walk_off(h);
         if !w.reduced_motion
             && let Some((action, t)) = h.action()
         {
             dx += motion::lunge(action, t) / 2;
         }
+        if h.charge > 0.0
+            && let Some(bx) = boss_at.filter(|_| !w.reduced_motion)
+        {
+            let k = w
+                .boss
+                .as_ref()
+                .and_then(|b| b.fighters.iter().position(|n| *n == h.name))
+                .unwrap_or(0) as i32;
+            let e = h.charge * h.charge * (3.0 - 2.0 * h.charge);
+            dx += ((bx - 9 - k * 6 - x as i32) as f32 * e).round() as i32;
+            flip |= !h.engaged;
+        }
         let py = stand_y(scene, f.h);
+        if let Some(id) = &h.pet {
+            let ptag = match h.anim() {
+                Anim::Walk => "walk",
+                Anim::Sit => "sit",
+                Anim::Attack | Anim::Cast | Anim::Victory => "trick",
+                _ => "idle",
+            };
+            let pf = sheet(&format!("pet_{id}_baby")).frame(ptag, w.clock_ms);
+            halfblock::draw(
+                buf,
+                scene,
+                pf,
+                x as i32 + dx + 10,
+                stand_y(scene, pf.h),
+                flip,
+            );
+        }
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
         float_text(h, scene, buf, x.saturating_sub(2), py);
         if let Some((s, fg)) = badge(h) {
             text(buf, scene.x + x + 9, scene.y, scene.right(), s, fg, 'n');
         }
     }
-    plus_n(w, scene, buf, 1 + drawn as u16 * STEP, drawn);
-    if camp(w) {
+    plus_n(w, scene, buf, 1 + drawn as u16 * step, drawn);
+    if draw_boss(w, scene, buf) {
+    } else if camp(w) {
         campfire(w, scene, buf, scene.width as i32, false);
     } else {
         let hit = w.heroes.iter().any(|h| h.anim() == Anim::Attack);

@@ -428,7 +428,11 @@ mod tests {
         let m = |cols, rows| layout::mode(Rect::new(0, 0, cols, rows), &w);
         assert_eq!(m(90, 14), layout::Mode::Full);
         assert_eq!(m(90, 13), layout::Mode::Compact);
-        assert_eq!(m(90, 11), layout::Mode::Compact, "6 scene rows for the chibis");
+        assert_eq!(
+            m(90, 11),
+            layout::Mode::Compact,
+            "6 scene rows for the chibis"
+        );
         assert_eq!(m(90, 10), layout::Mode::Mini);
         assert_eq!(m(39, 30), layout::Mode::Compact);
         assert_eq!(m(29, 30), layout::Mode::Mini);
