@@ -231,7 +231,7 @@ command = ["./target/release/herdr-fantasy", "ask"]
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-- Mode is chosen from what fits (measured at M1): chrome = top bar + quest line + one footer row per drawn hero (max 4). **Full** needs chrome + 9 scene rows (16 px hero = 8 rows + ground) and ≥ 40 cols — 14 rows for 3 heroes. **Compact** needs chrome + 6 scene rows (12 px chibi hero = 6 rows) and ≥ 30 cols — 11 rows for 3 heroes. Otherwise **Mini**. Heroes drawn = what fits the width (17 cols each in full, 23 with pets; 13 in compact), rest as `+N`.
+- Mode is chosen from what fits: chrome = top bar + the 4-row Dragon Quest band (M21). **Full** needs chrome + 9 scene rows (16 px hero = 8 rows + ground) and ≥ 40 cols — 14 rows. **Compact** needs chrome + 6 scene rows (12 px chibi hero = 6 rows) and ≥ 30 cols — 11 rows. (Before M21 the chrome was a quest line and one footer row per hero.) Otherwise **Mini**. Heroes drawn = what fits the width (17 cols each in full, 23 with pets; 13 in compact), rest as `+N`.
 - Top bar: repo name, town theme name, party level (sum of hero levels / count, rounded). Each Hero carries its own repo's progress; if the Party spans several repos, the top bar shows the repo with the most Heroes (ties → most recently active).
 - Quest line: current quest title of the **focused or most recently active** hero.
 - Scene: heroes left, enemies right. Max 4 heroes drawn; extra shown as `+N`. Up to 3 Summons drawn small beside their Hero, extra as `+N`. The Rubber Duck sits by the campfire.
@@ -473,6 +473,14 @@ Each level-up adds 1 bonus point to the hero's current top stat (ties → the fi
 ### 7.11 Settings and first run (M18)
 - `s` opens settings for the selected hero (Tab picks the next hero): class and pet for its agent kind, skins, memes, reduced motion. ↑/↓ choose a row, ←/→ (or Enter) change it; the change applies at once (every hero of that kind) and is written to config.toml by a line-based edit that keeps comments and other keys. New panes of that kind get the new class.
 - First run: when every hero is Lv 1 with no XP and no quests, a welcome card (what the game is, the keys, `s`) sits in the middle of the scene until any key.
+
+### 7.12 Dragon Quest battle screen (M21)
+- **Band** (bottom 4 rows): one 15-col window per hero — name (class color), `L<level>`, a status mark (`!` blocked, `★` done, `z` idle), and `HP` = stamina as a 6-cell bar + number (`??` unknown); the selected hero's border is yellow, a blocked hero's blinks red; heroes that don't fit show as `+N`. The rest of the band is the **message window**.
+- **Message window** (`game/battle.rs`): lines type out at 25 ms a character, hold 0.9 s, two rows shown (word-wrapped, newest last), a queue of 3 (older lines dropped when agents outrun the reader), `▼` while more wait. With nothing said it shows the current quest or "The party rests by the fire."; a herdr banner (reconnecting…) takes it over.
+- **Narration**: every action is a line ("Claude attacks!", "Codex searches the tomes for \"auth\"...", "Claude sends a carrier pigeon! (git push)"), plus quests set out, enemies drawing near, damage, defeats, XP, loot, level-ups, rests, chapters, summons and "needs you".
+- **Field enemies**: waves of 1–3 slimes (Slime 20 HP, Red Slime 35, rare Metal Slime 6 that takes at most 2 per hit), seeded per wave. An edit hits the first one standing for its damage (lines changed): the slime blinks, a slash crosses it and the number floats up; at 0 HP it blinks out ("The Slime is defeated!") and 1.5 s after a wave is cleared the next "draws near". During a boss fight edits narrate damage to the boss instead.
+- **Enemy window** (full layout): enemy names with counts, or the boss with its HP bar, top right of the battlefield.
+- **Encounter**: a new boss sweeps black bands across the battlefield and opens on it (0.6 s; off with `reduced_motion`).
 
 ### 7.4 Stamina (context window) — "what happens when context is full"
 - `STA% = 100 - context_pct`, where `context_pct = current_context_tokens / context_window_size`.

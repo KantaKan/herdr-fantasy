@@ -404,6 +404,8 @@ pub struct Hero {
     pub boss_tool: Option<String>,
     /// In melee with the boss: runs over, swings until its command ends.
     pub engaged: bool,
+    /// Last level the message window announced (0 = not yet seen; loads don't count).
+    pub announced_level: u32,
     /// 0.0 at its spot in the line … 1.0 at the boss.
     pub charge: f32,
     pub life: Lifetime,
@@ -449,6 +451,7 @@ impl Hero {
             title_from_prompt: false,
             boss_tool: None,
             engaged: false,
+            announced_level: 0,
             charge: 0.0,
             life: Lifetime::default(),
             pet: None,

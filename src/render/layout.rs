@@ -27,12 +27,13 @@ const FULL_SCENE: u16 = 9;
 const COMPACT_SCENE: u16 = 6;
 const MAX_DRAWN: usize = 4;
 
-fn footer_rows(w: &World) -> u16 {
-    w.heroes.len().clamp(1, MAX_DRAWN) as u16
-}
+/// Rows of the Dragon Quest band at the bottom: party windows + message window.
+const BAND: u16 = 4;
+/// One party window: `Claude  L12!` / `HP▓▓▓▓▓░ 65`.
+const PARTY_W: u16 = 15;
 
-pub fn mode(area: Rect, w: &World) -> Mode {
-    let chrome = 2 + footer_rows(w);
+pub fn mode(area: Rect, _w: &World) -> Mode {
+    let chrome = 1 + BAND;
     if area.height >= chrome + FULL_SCENE && area.width >= 40 {
         Mode::Full
     } else if area.height >= chrome + COMPACT_SCENE && area.width >= 30 {
@@ -86,9 +87,8 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
         Mode::Mini => mini(w, area, buf),
         m => {
             top_bar(w, area, buf, area.y);
-            quest_line(w, area, buf, area.y + 1);
-            let footer = footer_rows(w);
-            let scene = Rect::new(area.x, area.y + 2, area.width, area.height - 2 - footer);
+            let scene = Rect::new(area.x, area.y + 1, area.width, area.height - 1 - BAND);
+            let band = Rect::new(area.x, area.bottom() - BAND, area.width, BAND);
             if view.screen == Screen::Town {
                 backdrop(w, scene, buf);
                 screens::town_scene(w, hero, scene, buf, m == Mode::Full);
@@ -100,15 +100,17 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
                 } else {
                     compact_scene(w, scene, buf);
                 }
+                if m == Mode::Full {
+                    enemy_window(w, scene, buf);
+                }
+                encounter_wipe(w, scene, buf);
                 // Last, so a hero's ❗ or a float never cuts through it.
                 banner(w, scene, buf);
                 if w.welcome && crate::game::settings::first_run(w) {
                     screens::welcome(scene, buf);
                 }
             }
-            for (i, h) in w.heroes.iter().take(MAX_DRAWN).enumerate() {
-                footer_row(h, area, buf, scene.bottom() + i as u16, i == view.selected);
-            }
+            dq_band(w, view, band, buf);
         }
     }
 }
@@ -210,54 +212,6 @@ fn fireworks(w: &World, scene: Rect, buf: &mut Buffer) {
         }
         pixel(buf, scene, cx, top, 'w');
     }
-}
-
-fn quest_line(w: &World, area: Rect, buf: &mut Buffer, y: u16) {
-    let right = if let Some(b) = &w.boss {
-        let filled = (b.hp as usize).div_ceil(25);
-        format!(
-            " {} {}{} ",
-            b.name,
-            "█".repeat(filled * 2),
-            "░".repeat(8 - filled * 2)
-        )
-    } else if let Some(q) = w.quest_hero().and_then(|h| h.quest.as_ref()) {
-        let s = q.elapsed_ms / 1000;
-        format!(" ⏱ {:02}:{:02} ", s / 60, s % 60)
-    } else {
-        String::new()
-    };
-    let rx = area.right().saturating_sub(right.chars().count() as u16);
-    if let Some(b) = &w.banner {
-        text(buf, area.x, y, rx, &format!(" ⚠ {b}"), 'o', 'd');
-    } else if let Some(h) = w.quest_hero() {
-        let q = h.quest.as_ref().unwrap();
-        let x = text(buf, area.x, y, rx, " ⚔ Quest: ", 'w', 'd');
-        let x = text(buf, x, y, rx, &q.title, 'w', 'd');
-        if w.heroes.len() > 1 {
-            text(
-                buf,
-                x,
-                y,
-                rx,
-                &format!(" · {}", h.name),
-                h.class.color(),
-                'd',
-            );
-        }
-    } else {
-        text(
-            buf,
-            area.x,
-            y,
-            rx,
-            " ⚔ No quest — the party rests",
-            's',
-            'd',
-        );
-    }
-    let fg = if w.boss.is_some() { 'r' } else { 's' };
-    text(buf, rx, y, area.right(), &right, fg, 'd');
 }
 
 /// Night sky with twinkling stars, then a strip of grass that scrolls while anyone walks.
@@ -755,8 +709,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     } else if camp(w) {
         campfire(w, scene, buf, right, true);
     } else {
-        let hit = w.heroes.iter().any(|h| h.anim() == Anim::Attack);
-        slimes(w, scene, buf, right, 2, hit);
+        draw_mobs(w, scene, buf, right, 3);
         // The Rubber Duck watches the fight from just in front of the enemies.
         let d = sheet("rubber_duck").frame(
             if w.duck.says.is_some() {
@@ -872,14 +825,269 @@ fn summon_count(h: &Hero, scene: Rect, buf: &mut Buffer, x: i32) {
     }
 }
 
-fn slimes(w: &World, scene: Rect, buf: &mut Buffer, right: i32, n: i32, hit: bool) {
+/// The field wave (M21): slimes recolored by kind; a hit blinks it, slashes it and pops
+/// the damage over it; the defeated blink out.
+fn draw_mobs(w: &World, scene: Rect, buf: &mut Buffer, right: i32, max: usize) {
+    use crate::game::battle::HIT_MS;
     let s = sheet("slime");
-    for i in 0..n {
-        let tag = if hit && i == 0 { "hurt" } else { "idle" };
-        // Offset each slime's clock so they don't bounce in lockstep.
-        let f = s.frame(tag, w.clock_ms + i as u64 * 170);
-        let x = right - (n - i) * (f.w as i32 + 2);
-        halfblock::draw(buf, scene, f, x, stand_y(scene, f.h), true);
+    let n = w.mobs.len().min(max) as i32;
+    for (i, m) in w.mobs.iter().take(max).enumerate() {
+        let fresh = m.hit_ms > HIT_MS - 200;
+        let f = s.frame(
+            if fresh { "hurt" } else { "idle" },
+            w.clock_ms + i as u64 * 170,
+        );
+        let tinted;
+        let f = if m.kind.swaps().is_empty() {
+            f
+        } else {
+            tinted = super::sprites::recolor(f, m.kind.swaps());
+            &tinted
+        };
+        let x = right - (n - i as i32) * (f.w as i32 + 3);
+        let y = stand_y(scene, f.h);
+        let blink = match m.dying_ms {
+            Some(d) => (d / 60).is_multiple_of(2),
+            None => m.hit_ms > 0 && (m.hit_ms / 80).is_multiple_of(2) && !w.reduced_motion,
+        };
+        if !blink {
+            halfblock::draw(buf, scene, f, x, y, true);
+        }
+        if fresh && m.dying_ms.is_none() {
+            for k in 0..6 {
+                pixel(buf, scene, x + 1 + k, y - 1 + k, 'w'); // the slash
+            }
+        }
+        if m.hit_ms > 0 {
+            let rise = ((HIT_MS - m.hit_ms) / 150) as i32;
+            let ty = (scene.y as i32 + (y - 2) / 2 - rise).max(scene.y as i32) as u16;
+            let tx = (scene.x as i32 + x + 2).max(0) as u16;
+            text_on(buf, tx, ty, scene.right(), &m.last_damage.to_string(), 'w');
+        }
+    }
+}
+
+/// Boss encounter: black bands sweep in from both sides, then open on the boss
+/// (alternate rows from opposite edges, like the old battle transitions).
+fn encounter_wipe(w: &World, scene: Rect, buf: &mut Buffer) {
+    use crate::game::world::ENCOUNTER_MS;
+    if w.encounter_ms == 0 || w.reduced_motion {
+        return;
+    }
+    let t = 1.0 - w.encounter_ms as f32 / ENCOUNTER_MS as f32;
+    let cover = if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 };
+    let reach = (scene.width as f32 * cover) as u16;
+    let black = c('k');
+    for y in scene.top()..scene.bottom() {
+        let from_left = (y - scene.top()).is_multiple_of(2);
+        for i in 0..reach.min(scene.width) {
+            let x = if from_left {
+                scene.x + i
+            } else {
+                scene.right() - 1 - i
+            };
+            buf[(x, y)].reset();
+            buf[(x, y)].set_bg(black);
+        }
+    }
+}
+
+/// Greedy word wrap to `width` columns (a word longer than a row is cut).
+fn wrap(s: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut rows = vec![String::new()];
+    for word in s.split(' ') {
+        let row = rows.last_mut().unwrap();
+        let len = row.chars().count();
+        if len > 0 && len + 1 + word.chars().count() > width {
+            rows.push(word.chars().take(width).collect());
+        } else {
+            if len > 0 {
+                row.push(' ');
+            }
+            row.push_str(word);
+        }
+    }
+    rows
+}
+
+/// A Dragon Quest window: black, with a double-line border.
+fn window(buf: &mut Buffer, r: Rect, border: char) {
+    if r.width < 2 || r.height < 2 {
+        return;
+    }
+    let style = Style::default().fg(c(border)).bg(c('k'));
+    for y in r.top()..r.bottom() {
+        for x in r.left()..r.right() {
+            let ch = match (
+                x == r.left(),
+                x == r.right() - 1,
+                y == r.top(),
+                y == r.bottom() - 1,
+            ) {
+                (true, _, true, _) => "╔",
+                (_, true, true, _) => "╗",
+                (true, _, _, true) => "╚",
+                (_, true, _, true) => "╝",
+                (_, _, true, _) | (_, _, _, true) => "═",
+                (true, _, _, _) | (_, true, _, _) => "║",
+                _ => " ",
+            };
+            buf[(x, y)].reset();
+            buf[(x, y)].set_symbol(ch).set_style(style);
+        }
+    }
+}
+
+/// Enemy names (or the boss and its HP) in a small window over the enemies.
+fn enemy_window(w: &World, scene: Rect, buf: &mut Buffer) {
+    let label = if let Some(b) = &w.boss {
+        let filled = (b.hp as usize).div_ceil(25);
+        format!(
+            "{} {}{}",
+            b.name,
+            "█".repeat(filled * 2),
+            "░".repeat(8 - filled * 2)
+        )
+    } else {
+        let mut groups: Vec<(&str, usize)> = Vec::new();
+        for m in w.mobs.iter().filter(|m| m.dying_ms.is_none()) {
+            match groups.iter_mut().find(|(n, _)| *n == m.kind.name()) {
+                Some(g) => g.1 += 1,
+                None => groups.push((m.kind.name(), 1)),
+            }
+        }
+        if groups.is_empty() || camp(w) || scene.height < 9 {
+            return;
+        }
+        groups
+            .iter()
+            .map(|(n, k)| {
+                if *k > 1 {
+                    format!("{n} ×{k}")
+                } else {
+                    n.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("  ")
+    };
+    let wdt = (label.chars().count() as u16 + 4).min(scene.width);
+    let r = Rect::new(scene.right().saturating_sub(wdt + 1), scene.y, wdt, 3);
+    window(buf, r, 'w');
+    let fg = if w.boss.is_some() { 'r' } else { 'w' };
+    text(buf, r.x + 2, r.y + 1, r.right() - 1, &label, fg, 'k');
+}
+
+/// The Dragon Quest band: a window per hero (the selected one in yellow, a blocked one
+/// blinking red) and the message window typing out what happens.
+fn dq_band(w: &World, view: &View, band: Rect, buf: &mut Buffer) {
+    let fit = ((band.width.saturating_sub(24)) / PARTY_W).max(1) as usize;
+    let shown = w.heroes.len().min(fit).min(MAX_DRAWN);
+    for (i, h) in w.heroes.iter().take(shown).enumerate() {
+        let r = Rect::new(band.x + i as u16 * PARTY_W, band.y, PARTY_W, BAND);
+        let blocked = h.status == Status::Blocked;
+        let border = if blocked && (w.clock_ms / 400).is_multiple_of(2) {
+            'r'
+        } else if i == view.selected {
+            'y'
+        } else {
+            'w'
+        };
+        window(buf, r, border);
+        let (x, y, end) = (r.x + 1, r.y + 1, r.right() - 1);
+        let nx = text(
+            buf,
+            x,
+            y,
+            end,
+            &format!("{:<8.8}", h.name),
+            h.class.color(),
+            'k',
+        );
+        let lx = text(buf, nx, y, end, &format!("L{}", h.level), 'w', 'k');
+        let (icon, col) = match h.status {
+            Status::Blocked => ("!", 'r'),
+            Status::Done => ("★", 'y'),
+            Status::Idle => ("z", 's'),
+            Status::Working => ("", 'w'),
+        };
+        text(buf, lx.max(end - 1), y, end, icon, col, 'k');
+        let hx = text(buf, x, y + 1, end, "HP", 's', 'k');
+        match h.context_used {
+            Some(used) => {
+                let left = 100 - used.min(100) as usize;
+                let col = match used {
+                    90.. => 'r',
+                    70.. => 'o',
+                    _ => 'G',
+                };
+                let (f, e) = bar(left.div_ceil(17), 6);
+                let bx = text(buf, hx, y + 1, end, &f, col, 'k');
+                let bx = text(buf, bx, y + 1, end, &e, 'S', 'k');
+                text(buf, bx, y + 1, end, &format!("{left:>3}"), 'w', 'k');
+            }
+            None => {
+                text(buf, hx, y + 1, end, " ------ ??", 'S', 'k');
+            }
+        }
+    }
+    let mx = band.x + shown as u16 * PARTY_W;
+    let msg = Rect::new(mx, band.y, band.right().saturating_sub(mx), BAND);
+    window(buf, msg, 'w');
+    if w.heroes.len() > shown {
+        text(
+            buf,
+            msg.x + 1,
+            msg.y,
+            msg.right(),
+            &format!(" +{} ", w.heroes.len() - shown),
+            'y',
+            'k',
+        );
+    }
+    let lines = w.messages.shown();
+    let fallback;
+    let lines: Vec<&str> = if let Some(b) = &w.banner {
+        fallback = format!("⚠ {b}");
+        vec![fallback.as_str()]
+    } else if lines.is_empty() {
+        fallback = match w
+            .quest_hero()
+            .and_then(|h| h.quest.as_ref().map(|q| (h, q)))
+        {
+            Some((h, q)) => format!("{} is on a quest: {}", h.name, q.title),
+            None => "The party rests by the fire.".into(),
+        };
+        vec![fallback.as_str()]
+    } else {
+        lines.iter().map(String::as_str).collect()
+    };
+    // Wrap like the real thing; the window keeps its two newest rows.
+    let inner = msg.width.saturating_sub(4) as usize;
+    let rows: Vec<String> = lines.iter().flat_map(|l| wrap(l, inner)).collect();
+    for (k, l) in rows.iter().skip(rows.len().saturating_sub(2)).enumerate() {
+        text(
+            buf,
+            msg.x + 2,
+            msg.y + 1 + k as u16,
+            msg.right() - 1,
+            l,
+            'w',
+            'k',
+        );
+    }
+    // The DQ "more" arrow while lines are waiting.
+    if w.messages.busy() && (w.clock_ms / 300).is_multiple_of(2) {
+        text(
+            buf,
+            msg.right().saturating_sub(3),
+            msg.bottom() - 2,
+            msg.right() - 1,
+            "▼",
+            'w',
+            'k',
+        );
     }
 }
 
@@ -957,8 +1165,7 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     } else if camp(w) {
         campfire(w, scene, buf, scene.width as i32, false);
     } else {
-        let hit = w.heroes.iter().any(|h| h.anim() == Anim::Attack);
-        slimes(w, scene, buf, scene.width as i32, 1, hit);
+        draw_mobs(w, scene, buf, scene.width as i32, 2);
     }
     duck_bubble(w, scene, buf);
 }
@@ -982,62 +1189,6 @@ fn xp_cells(h: &Hero, cells: usize) -> usize {
 }
 
 /// `Claude    Lv7  ▓▓▓▓▓▓░░ XP  STA ▓▓▓▓░  62%  editing src/auth.rs`
-fn footer_row(h: &Hero, area: Rect, buf: &mut Buffer, y: u16, selected: bool) {
-    let end = area.right();
-    let mut x = text(
-        buf,
-        area.x,
-        y,
-        end,
-        if selected { "▶" } else { " " },
-        'y',
-        'd',
-    );
-    x = text(
-        buf,
-        x,
-        y,
-        end,
-        &format!("{:<9.9}", h.name),
-        h.class.color(),
-        'd',
-    );
-    x = text(buf, x, y, end, &format!(" Lv{:<3}", h.level), 'w', 'd');
-    let (f, e) = bar(xp_cells(h, 8), 8);
-    x = text(buf, x, y, end, &f, 'y', 'd');
-    x = text(buf, x, y, end, &e, 'S', 'd');
-    x = text(buf, x, y, end, " XP ", 's', 'd');
-    if area.width >= 50 {
-        x = text(buf, x, y, end, " STA ", 's', 'd');
-        match h.context_used {
-            Some(used) => {
-                let left = 100 - used as usize;
-                let col = match used {
-                    90.. => 'r',
-                    70.. => 'o',
-                    _ => 'c',
-                };
-                let (f, e) = bar(left.div_ceil(20), 5);
-                x = text(buf, x, y, end, &f, col, 'd');
-                x = text(buf, x, y, end, &e, 'S', 'd');
-                x = text(buf, x, y, end, &format!(" {left:>3}% "), 's', 'd');
-            }
-            None => x = text(buf, x, y, end, "  ?        ", 's', 'd'),
-        }
-    }
-    if !h.summons.is_empty() {
-        x = text(buf, x, y, end, &format!(" ☠{}", h.summons.len()), 'p', 'd');
-    }
-    if area.width >= 36 {
-        let fg = if h.status == Status::Blocked {
-            'r'
-        } else {
-            'w'
-        };
-        text(buf, x, y, end, &format!(" {}", activity(h)), fg, 'd');
-    }
-}
-
 /// One line per hero; the state icon still animates (SPEC §5.3).
 fn mini(w: &World, area: Rect, buf: &mut Buffer) {
     let n = w.heroes.len() as u16;

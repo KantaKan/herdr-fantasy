@@ -144,6 +144,9 @@ pub fn sync(
             }
         }
     }
+    for name in &newly_blocked {
+        w.messages.say(format!("{name} needs you! (prefix+a)"));
+    }
     newly_blocked
 }
 
@@ -225,6 +228,10 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
                 }
                 h.title = Some(prompt_title(p));
                 h.title_from_prompt = true;
+                if !f.history {
+                    let line = format!("{} sets out: {}", h.name, prompt_title(p));
+                    w.messages.say(line);
+                }
             }
             Entry::Tool { name, input, .. } if f.history => {
                 // History still tells us where the hero was working.
@@ -273,11 +280,16 @@ pub fn feed(w: &mut World, f: Feed, windows: &BTreeMap<String, u64>, bosses: &Bo
                         m.action
                     };
                     h.act(action, Some(detail));
+                    let damage = m
+                        .float
+                        .as_ref()
+                        .and_then(|(t, _)| t.strip_prefix('-')?.parse().ok());
                     if let Some((text, color)) = m.float
                         && h.status == Status::Working
                     {
                         h.say(text, color);
                     }
+                    w.on_action(i, action, damage);
                 }
             }
             Entry::ToolResult { id, is_error, text } if !f.history => {

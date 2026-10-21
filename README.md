@@ -2,7 +2,9 @@
 
 Your coding agents as a fantasy RPG party, living in a [herdr](https://herdr.dev) pane.
 While agents work they fight slimes and bosses that mirror what they're really doing;
-when one needs you it raises its hand and talks to you in a JRPG dialogue box. Each repo
+fights like a Dragon Quest party — slimes, bosses and a message window that narrates
+every move — and when one needs you it raises its hand and talks to you in a JRPG
+dialogue box. Each repo
 grows its own party, levels, quest log and town.
 
 ![demo: a Wild Card jester leads the party against the Sahur Knocker while Joke Class summons rise and the Rubber Duck comments](docs/demo.gif)

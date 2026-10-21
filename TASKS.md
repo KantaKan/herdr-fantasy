@@ -163,6 +163,13 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [x] Budget (< 3% CPU, < 30 MB) re-measured in a real terminal on a quiet machine.
   **Done when:** the stress bench is under budget with numbers in the README. (2026-10-17: profiled with `perf_split` / `perf_changed_cells` (ignored tests): update 7 µs, render 110 µs per frame, ~280 changed cells — the rest is terminal output, which only redraws changed cells already. Real process CPU 0.94%, 24.3 MB. Nothing needed cutting; the earlier 3.45% was wall-clock time on a busy machine.)
 
+## M21 — Dragon Quest battle screen
+- [x] Message window (`game/battle.rs`): narrated lines type out, two shown, a short queue; every action, enemy, boss, loot and level-up is a line.
+- [x] Field enemies with HP: slime waves (Slime, Red Slime, rare Metal Slime) take edit damage, blink and show the damage, die, and the next wave "draws near".
+- [x] Layout: top bar, battlefield (heroes + pets left, enemies right, enemy-name window), and a DQ band — one window per hero (name, Lv, HP, status; selected = yellow border) beside the message window. Footer and quest line go. Full = 14 rows, compact (chibis) = 11.
+- [x] Effects: slash marks on hits, enemy blink, a boss-appears transition.
+  **Done when:** the demo plays as a narrated DQ-style battle in full and compact panes, with tests and a new GIF. (2026-10-21: `battles_are_narrated_and_edits_hit_the_field_wave`, `dq_band_shows_party_windows_and_messages`, battle.rs tests; previews at 112×18, 90×14, 80×11; GIF refreshed.)
+
 ## Manual QA checklist (run before each release)
 - [ ] Windows Terminal + native herdr: halfblock, auto-open, ask popup, transcript events.
 - [ ] Ghostty + herdr local: Kitty sprites, auto-open, ask popup, transcript events.

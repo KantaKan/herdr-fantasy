@@ -491,6 +491,29 @@ mod tests {
     }
 
     #[test]
+    fn dq_band_shows_party_windows_and_messages() {
+        let mut world = World::new("r", "t");
+        let a = world.add_hero("Claude", crate::game::hero::Class::Knight);
+        world.heroes[a].level = 3;
+        world.welcome = false;
+        world.messages.say("Claude attacks!");
+        world.messages.update(2_000);
+        let mut t = Terminal::new(TestBackend::new(90, 14)).unwrap();
+        t.draw(|f| layout::render(&world, &view::View::default(), f.area(), f.buffer_mut()))
+            .unwrap();
+        let screen: String = t
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(screen.contains("Claude  L3"), "party window");
+        assert!(screen.contains("Claude attacks!"), "message window");
+        assert!(screen.contains("╔"), "DQ window border");
+    }
+
+    #[test]
     fn welcome_card_for_a_new_party_until_a_key() {
         let mut world = World::new("r", "t");
         world.add_hero("Claude", crate::game::hero::Class::Knight);

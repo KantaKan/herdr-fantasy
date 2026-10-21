@@ -81,6 +81,11 @@ impl Summon {
         JOKES[self.joke].0
     }
 
+    /// Display name of its Joke Class.
+    pub fn name(&self) -> &'static str {
+        JOKES[self.joke].1
+    }
+
     pub fn quip(&self) -> &'static str {
         JOKES[self.joke].2
     }

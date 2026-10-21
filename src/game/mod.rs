@@ -1,4 +1,5 @@
 pub mod badges;
+pub mod battle;
 pub mod boss;
 pub mod daily;
 pub mod demo;

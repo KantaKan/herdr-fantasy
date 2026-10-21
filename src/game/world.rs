@@ -3,6 +3,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use super::battle::{self, Messages, Mob};
 use super::boss::{self, BossKind, Tier};
 use super::duck::{self, Quip};
 use super::hero::{Action, Class, Hero, QuestDone, Seat, Status};
@@ -66,6 +67,8 @@ pub const HIT_MS: u64 = 150;
 
 const LAUGH_MS: u64 = 1200;
 const DYING_MS: u64 = 1200;
+/// The black wipe when a boss draws near.
+pub const ENCOUNTER_MS: u64 = 600;
 /// Party level-up fireworks length.
 pub const FIREWORKS_MS: u64 = 3_000;
 
@@ -242,6 +245,13 @@ pub struct World {
     pub fireworks_ms: u64,
     /// The first-run welcome card is still up (closed by any key).
     pub welcome: bool,
+    /// Dragon Quest message window and field enemies (M21).
+    pub messages: Messages,
+    pub mobs: Vec<Mob>,
+    /// Boss-encounter wipe time left (M21).
+    pub encounter_ms: u64,
+    waves: u32,
+    wave_gap_ms: u64,
 }
 
 impl World {
@@ -272,6 +282,12 @@ impl World {
             party_seen: (0, 0),
             fireworks_ms: 0,
             welcome: true,
+            messages: Messages::default(),
+            mobs: Vec::new(),
+            encounter_ms: 0,
+            waves: 0,
+            // The first wave draws near on the first tick.
+            wave_gap_ms: battle::WAVE_GAP_MS,
         }
     }
 
@@ -341,6 +357,9 @@ impl World {
                 if let Some(h) = self.heroes.get_mut(i) {
                     h.act(a, detail);
                 }
+                // Demo edits hit for 4-20.
+                let dmg = 4 + ((self.clock_ms / 66 + i as u64 * 7) % 17) as u32;
+                self.on_action(i, a, Some(dmg));
             }
             GameEvent::Title(i, t) => {
                 if let Some(h) = self.heroes.get_mut(i) {
@@ -360,11 +379,19 @@ impl World {
                         if !b.fighters.contains(&h.name) {
                             b.fighters.push(h.name.clone());
                             h.say("joins the fight!".into(), 'c');
+                            self.messages.say(format!("{} joins the fight!", h.name));
+                        } else {
+                            self.messages
+                                .say(format!("{} attacks again: {cmd}!", h.name));
                         }
                     }
                     _ => {
                         h.engaged = true;
-                        self.boss = Some(Boss::new(kind, &cmd, &h.name));
+                        let b = Boss::new(kind, &cmd, &h.name);
+                        self.messages.say(format!("The {} draws near!", b.name));
+                        self.encounter_ms = ENCOUNTER_MS;
+                        self.messages.say(format!("{} attacks with {cmd}!", h.name));
+                        self.boss = Some(b);
                     }
                 }
             }
@@ -390,6 +417,8 @@ impl World {
                             .quip(Quip::StubbornBoss, key, self.clock_ms, self.memes);
                     }
                     h.say(format!("{} laughs!", b.name), 'r');
+                    self.messages
+                        .say(format!("The {} shrugs it off and laughs!", b.name));
                 } else {
                     let team: Vec<String> = b.fighters.clone();
                     let combo = team.len() >= 2;
@@ -420,11 +449,19 @@ impl World {
                     if let Some(item) = loot::roll(&h.name, h.life.bosses_won, b.id, b.tier) {
                         tracing::info!("{} found {}", h.name, item.name);
                         let text = format!("{} found {}!", h.name, item.name);
+                        self.messages.say(text.clone());
                         announce(&mut self.headline, &mut self.headlines, text);
                         h.life.loot.push(item);
                         self.save_now = true;
                     }
                     h.say(format!("+{xp} XP{bonus}"), 'y');
+                    self.messages.say(format!("The {} is defeated!", b.name));
+                    if combo {
+                        self.messages
+                            .say(format!("Team attack! Everyone gains {xp} XP."));
+                    } else {
+                        self.messages.say(format!("{} gains {xp} XP.", h.name));
+                    }
                     if h.gain_xp(xp) > 0 {
                         self.save_now = true;
                     }
@@ -472,12 +509,20 @@ impl World {
                     }
                     h.rest(pct);
                     h.say(format!("+{} XP · VIT up", super::hero::REST_XP), 'C');
+                    self.messages
+                        .say(format!("{} rests by the fire... Stamina restored!", h.name));
                     self.save_now = true;
                 }
             }
             GameEvent::Summon(i, id, background) => {
                 if let Some(h) = self.heroes.get_mut(i) {
-                    h.summons.push(super::summon::Summon::new(&id, background));
+                    let s = super::summon::Summon::new(&id, background);
+                    self.messages.say(format!(
+                        "{} summons a {} from the shadows!",
+                        h.name,
+                        s.name()
+                    ));
+                    h.summons.push(s);
                     h.life.shadows += 1;
                 }
             }
@@ -504,6 +549,11 @@ impl World {
                     }
                     h.new_run();
                     let text = format!("{} — Chapter {} · New Run", h.name, h.life.chapters + 1);
+                    self.messages.say(format!(
+                        "{} begins Chapter {}!",
+                        h.name,
+                        h.life.chapters + 1
+                    ));
                     announce(&mut self.headline, &mut self.headlines, text);
                     self.save_now = true;
                 }
@@ -520,6 +570,36 @@ impl World {
             }
         }
         self.fireworks_ms = self.fireworks_ms.saturating_sub(dt);
+        self.messages.update(dt);
+        self.encounter_ms = self.encounter_ms.saturating_sub(dt);
+        for m in &mut self.mobs {
+            m.hit_ms = m.hit_ms.saturating_sub(dt);
+            if let Some(d) = &mut m.dying_ms {
+                *d += dt;
+            }
+        }
+        self.mobs
+            .retain(|m| m.dying_ms.is_none_or(|d| d < battle::DIE_MS));
+        if self.mobs.is_empty() {
+            self.wave_gap_ms += dt;
+            if self.wave_gap_ms >= battle::WAVE_GAP_MS {
+                self.mobs = battle::wave(self.waves);
+                self.waves += 1;
+                self.wave_gap_ms = 0;
+                if self.boss.is_none() && !self.heroes.is_empty() {
+                    self.messages.say(battle::appear_line(&self.mobs));
+                }
+            }
+        }
+        for h in &mut self.heroes {
+            if h.announced_level == 0 {
+                h.announced_level = h.level;
+            } else if h.level > h.announced_level {
+                h.announced_level = h.level;
+                self.messages
+                    .say(format!("{} is now level {}!", h.name, h.level));
+            }
+        }
         let party = (self.heroes.len(), self.party_level());
         if party.0 == self.party_seen.0 && party.1 > self.party_seen.1 && party.0 > 0 {
             let text = format!("🎉 Party Lv {} — {}!", party.1, party_rank(party.1).0);
@@ -633,6 +713,37 @@ impl World {
                     || h.charge > 0.0
             })
             || self.fireworks_ms > 0
+            || self.messages.busy()
+            || self.encounter_ms > 0
+            || self
+                .mobs
+                .iter()
+                .any(|m| m.hit_ms > 0 || m.dying_ms.is_some())
+    }
+
+    /// Narrate a hero's action in the message window; an edit also hits the first enemy
+    /// standing (the boss when there is one, else the field wave) for `damage`.
+    pub fn on_action(&mut self, i: usize, action: Action, damage: Option<u32>) {
+        let Some(h) = self.heroes.get(i) else { return };
+        if h.status != Status::Working {
+            return;
+        }
+        self.messages
+            .say(battle::action_line(&h.name, action, h.detail.as_deref()));
+        if action != Action::Attack {
+            return;
+        }
+        let dmg = damage.unwrap_or(8);
+        match &self.boss {
+            Some(b) => self
+                .messages
+                .say(format!("The {} takes {dmg} damage!", b.name)),
+            None => {
+                for line in battle::strike(&mut self.mobs, dmg) {
+                    self.messages.say(line);
+                }
+            }
+        }
     }
 }
 
@@ -977,6 +1088,37 @@ mod tests {
         w.update(RETURN_MS as u64);
         assert!(!w.heroes[a].engaged);
         assert_eq!(w.heroes[a].charge, 0.0);
+    }
+
+    #[test]
+    fn battles_are_narrated_and_edits_hit_the_field_wave() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.apply(GameEvent::Status(a, Status::Working));
+        w.update(1); // the first wave draws near
+        assert!(!w.mobs.is_empty());
+        assert!(
+            w.messages.lines[0].contains("draw"),
+            "{:?}",
+            w.messages.lines
+        );
+        let hp = w.mobs[0].hp;
+        w.apply(GameEvent::Act(
+            a,
+            Action::Attack,
+            Some("editing src/x.rs".into()),
+        ));
+        assert!(w.mobs[0].hp < hp || w.mobs[0].dying_ms.is_some());
+        w.apply(GameEvent::BossFight(a, BossKind::Test, "cargo test".into()));
+        assert!(w.encounter_ms > 0);
+        w.apply(GameEvent::BossResult(a, false));
+        let mut said: Vec<String> = Vec::new();
+        for _ in 0..40 {
+            w.update(500);
+            said.extend(w.messages.lines.iter().cloned());
+        }
+        assert!(said.iter().any(|l| l.contains("is defeated!")), "{said:?}");
+        assert!(said.iter().any(|l| l.contains("A gains")), "{said:?}");
     }
 
     #[test]
