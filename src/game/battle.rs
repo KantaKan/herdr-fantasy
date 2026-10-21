@@ -142,6 +142,10 @@ pub enum MobKind {
     Slime,
     RedSlime,
     MetalSlime,
+    Bat,
+    Skeleton,
+    Goblin,
+    Mushroom,
 }
 
 impl MobKind {
@@ -150,7 +154,27 @@ impl MobKind {
             MobKind::Slime => "Slime",
             MobKind::RedSlime => "Red Slime",
             MobKind::MetalSlime => "Metal Slime",
+            MobKind::Bat => "Bat",
+            MobKind::Skeleton => "Skeleton",
+            MobKind::Goblin => "Goblin",
+            MobKind::Mushroom => "Mushroom",
         }
+    }
+
+    /// Sprite sheet: slimes share one (recolored by `swaps`).
+    pub fn sprite(self) -> &'static str {
+        match self {
+            MobKind::Slime | MobKind::RedSlime | MobKind::MetalSlime => "slime",
+            MobKind::Bat => "mob_bat",
+            MobKind::Skeleton => "mob_skeleton",
+            MobKind::Goblin => "mob_goblin",
+            MobKind::Mushroom => "mob_mushroom",
+        }
+    }
+
+    /// Flies above the ground (and bobs).
+    pub fn flies(self) -> bool {
+        self == MobKind::Bat
     }
 
     /// Palette swaps applied to the slime sprite.
@@ -159,6 +183,7 @@ impl MobKind {
             MobKind::Slime => &[],
             MobKind::RedSlime => &[('g', 'r'), ('G', 'o'), ('t', 'p')],
             MobKind::MetalSlime => &[('g', 's'), ('G', 'w'), ('t', 'S')],
+            _ => &[],
         }
     }
 
@@ -167,6 +192,10 @@ impl MobKind {
             MobKind::Slime => 20,
             MobKind::RedSlime => 35,
             MobKind::MetalSlime => 6,
+            MobKind::Bat => 14,
+            MobKind::Skeleton => 30,
+            MobKind::Goblin => 25,
+            MobKind::Mushroom => 18,
         }
     }
 }
@@ -176,17 +205,37 @@ pub const DIE_MS: u64 = 500;
 /// Gap between a cleared wave and the next one drawing near.
 pub const WAVE_GAP_MS: u64 = 1_500;
 
-/// The wave after `n` waves: 1–3 slimes, sometimes red, rarely a Metal Slime.
-pub fn wave(n: u32) -> Vec<Mob> {
-    let h = (n as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 33;
+/// Who lives around each town (by theme name): three common kinds; the Metal Slime is
+/// a rare guest everywhere.
+pub fn locals(theme: &str) -> [MobKind; 3] {
+    use MobKind::*;
+    match theme {
+        "Forge Village" => [Slime, Goblin, RedSlime],
+        "Lantern City" => [Bat, Skeleton, Slime],
+        "Harbor Town" => [Slime, Bat, Mushroom],
+        "Serpent Grove" => [Goblin, Mushroom, Skeleton],
+        _ => [Slime, Mushroom, RedSlime], // Meadow Hamlet and anything else
+    }
+}
+
+/// The wave after `n` waves in a town of `theme`: 1–3 of its locals, rarely a Metal
+/// Slime.
+pub fn wave(n: u32, theme: &str) -> Vec<Mob> {
+    // The town is part of the seed, so every town opens with its own waves.
+    let town = theme
+        .bytes()
+        .fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
+    let h = (n as u64 + town).wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 33;
     let count = 1 + (h % 3) as usize;
+    let locals = locals(theme);
     (0..count)
         .map(|i| {
             let r = (h >> (4 + i * 5)) % 16;
             let kind = match r {
                 0 => MobKind::MetalSlime,
-                1..=4 => MobKind::RedSlime,
-                _ => MobKind::Slime,
+                1..=5 => locals[1],
+                6..=8 => locals[2],
+                _ => locals[0],
             };
             Mob {
                 kind,
@@ -200,25 +249,37 @@ pub fn wave(n: u32) -> Vec<Mob> {
         .collect()
 }
 
-/// "A Slime draws near!" / "2 Slimes draw near!" / "A Slime and a Red Slime draw near!"
+/// "A Slime draws near!" / "2 Slimes draw near!" / "A Slime and 2 Goblins draw near!"
 pub fn appear_line(mobs: &[Mob]) -> String {
-    let names: Vec<&str> = mobs.iter().map(|m| m.kind.name()).collect();
-    if names.len() == 1 {
-        return format!("A {} draws near!", names[0]);
+    let mut groups: Vec<(&str, usize)> = Vec::new();
+    for m in mobs {
+        match groups.iter_mut().find(|(n, _)| *n == m.kind.name()) {
+            Some(g) => g.1 += 1,
+            None => groups.push((m.kind.name(), 1)),
+        }
     }
-    if names.iter().all(|n| *n == names[0]) {
-        return format!("{} {}s draw near!", names.len(), names[0]);
-    }
-    let mut s = names[..names.len() - 1]
+    let parts: Vec<String> = groups
         .iter()
-        .map(|n| format!("a {n}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    s.push_str(&format!(" and a {} draw near!", names[names.len() - 1]));
-    let mut c = s.chars();
-    c.next()
-        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
-        .unwrap_or(s)
+        .map(|(n, k)| {
+            if *k == 1 {
+                format!("a {n}")
+            } else {
+                format!("{k} {n}s")
+            }
+        })
+        .collect();
+    let list = match parts.as_slice() {
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        [] => return String::new(),
+    };
+    let verb = if mobs.len() == 1 { "draws" } else { "draw" };
+    let mut c = list.chars();
+    let first = c
+        .next()
+        .map(|f| f.to_uppercase().collect::<String>())
+        .unwrap_or_default();
+    format!("{first}{} {verb} near!", c.as_str())
 }
 
 /// Hit the first standing mob for `damage` (Metal Slimes shrug most of it off). Returns
@@ -286,10 +347,23 @@ mod tests {
             "The Slime takes 12 damage and is defeated!"
         );
         assert!(strike(&mut mobs, 5).is_none(), "nothing left standing");
-        let kinds: std::collections::HashSet<_> =
-            (0..200).flat_map(wave).map(|m| m.kind as u8).collect();
-        assert_eq!(kinds.len(), 3, "all three slimes show up");
-        assert!((0..200).all(|n| (1..=3).contains(&wave(n).len())));
+        let kinds = |theme| -> std::collections::HashSet<u8> {
+            (0..300)
+                .flat_map(|n| wave(n, theme))
+                .map(|m| m.kind as u8)
+                .collect()
+        };
+        assert_eq!(
+            kinds("Forge Village").len(),
+            4,
+            "3 locals + the Metal Slime"
+        );
+        assert_ne!(
+            kinds("Forge Village"),
+            kinds("Lantern City"),
+            "towns differ"
+        );
+        assert!((0..200).all(|n| (1..=3).contains(&wave(n, "Meadow Hamlet").len())));
     }
 
     #[test]
@@ -326,6 +400,10 @@ mod tests {
         assert_eq!(
             appear_line(&[mk(MobKind::Slime), mk(MobKind::RedSlime)]),
             "A Slime and a Red Slime draw near!"
+        );
+        assert_eq!(
+            appear_line(&[mk(MobKind::Slime), mk(MobKind::Goblin), mk(MobKind::Goblin)]),
+            "A Slime and 2 Goblins draw near!"
         );
     }
 }

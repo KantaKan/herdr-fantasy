@@ -611,7 +611,7 @@ impl World {
         if self.mobs.is_empty() {
             self.wave_gap_ms += dt;
             if self.wave_gap_ms >= battle::WAVE_GAP_MS {
-                self.mobs = battle::wave(self.waves);
+                self.mobs = battle::wave(self.waves, &self.theme);
                 self.waves += 1;
                 self.wave_gap_ms = 0;
                 if self.boss.is_none() && !self.heroes.is_empty() {

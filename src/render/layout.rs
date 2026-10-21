@@ -568,10 +568,29 @@ fn charge_target(w: &World, scene: Rect, right: i32, max: usize) -> Option<i32> 
     if let Some((_, bx)) = boss_sprite(w, scene) {
         return Some(bx);
     }
-    let n = w.mobs.len().min(max) as i32;
-    let front = w.mobs.iter().take(max).position(|m| m.dying_ms.is_none())? as i32;
-    let fw = sheet("slime").frames[0].w as i32;
-    Some(right - (n - front) * (fw + 3))
+    let front = w.mobs.iter().take(max).position(|m| m.dying_ms.is_none())?;
+    Some(mob_xs(w, right, max)[front])
+}
+
+/// Left edge of each drawn field monster, laid out from the right edge, 3 apart.
+fn mob_xs(w: &World, right: i32, max: usize) -> Vec<i32> {
+    let widths: Vec<i32> = w
+        .mobs
+        .iter()
+        .take(max)
+        .map(|m| sheet(m.kind.sprite()).frames[0].w as i32)
+        .collect();
+    let mut x = right;
+    let mut xs: Vec<i32> = widths
+        .iter()
+        .rev()
+        .map(|wd| {
+            x -= wd + 3;
+            x
+        })
+        .collect();
+    xs.reverse();
+    xs
 }
 
 /// Order of `h` among the heroes charging the same target (they line up).
@@ -846,11 +865,10 @@ fn summon_count(h: &Hero, scene: Rect, buf: &mut Buffer, x: i32) {
 /// the damage over it; the defeated blink out.
 fn draw_mobs(w: &World, scene: Rect, buf: &mut Buffer, right: i32, max: usize) {
     use crate::game::battle::HIT_MS;
-    let s = sheet("slime");
-    let n = w.mobs.len().min(max) as i32;
+    let xs = mob_xs(w, right, max);
     for (i, m) in w.mobs.iter().take(max).enumerate() {
         let fresh = m.hit_ms > HIT_MS - 200;
-        let f = s.frame(
+        let f = sheet(m.kind.sprite()).frame(
             if fresh { "hurt" } else { "idle" },
             w.clock_ms + i as u64 * 170,
         );
@@ -861,8 +879,14 @@ fn draw_mobs(w: &World, scene: Rect, buf: &mut Buffer, right: i32, max: usize) {
             tinted = super::sprites::recolor(f, m.kind.swaps());
             &tinted
         };
-        let x = right - (n - i as i32) * (f.w as i32 + 3);
-        let y = stand_y(scene, f.h);
+        let x = xs[i];
+        // Bats fly: higher up, bobbing.
+        let y = stand_y(scene, f.h)
+            - if m.kind.flies() {
+                6 + ((w.clock_ms / 200 + i as u64) % 2) as i32
+            } else {
+                0
+            };
         let blink = match m.dying_ms {
             Some(d) => (d / 60).is_multiple_of(2),
             None => m.hit_ms > 0 && (m.hit_ms / 80).is_multiple_of(2) && !w.reduced_motion,

@@ -176,9 +176,9 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** every class fights differently in the demo and the messages say so. (2026-10-21: `every_class_fights_its_own_way`; fireball and arrows seen in demo frames.)
 
 ## M23 — Monster variety
-- [ ] New field monsters (bat, skeleton, goblin, mushroom) with their own sprites, names and HP, alongside the slimes.
-- [ ] Each town theme has its own monster table.
-  **Done when:** two themes show different monsters.
+- [x] New field monsters (bat, skeleton, goblin, mushroom) with their own sprites, names and HP, alongside the slimes.
+- [x] Each town theme has its own monster table.
+  **Done when:** two themes show different monsters. (2026-10-21: `mobs_take_damage_die_and_waves_vary` checks Forge Village ≠ Lantern City; goblins and red slimes in the demo.)
 
 ## M24 — Bosses strike back
 - [ ] While a boss fight runs, the boss uses a named move every few seconds ("The Test Golem uses Assertion Slam!"); the party windows shake and the heroes take cosmetic damage.

@@ -1,0 +1,34 @@
+# tag idle 300
+....kkkk....
+...kwwwwkkk.
+...kwkwkkssk
+...kwwwskssk
+....ksskkwk.
+....kwskkwk.
+...kwwwwwwk.
+...ksssskk..
+...kwkkwk...
+...kwkkwk...
+
+............
+....kkkk....
+...kwwwwkkk.
+...kwkwkkssk
+...kwwwskssk
+....ksskkwk.
+....kwskkwk.
+...kwwwwwwk.
+...kwsswkk..
+...kwkkwk...
+
+# tag hurt 100
+....kkkk....
+...kwwwwkkk.
+...kwswskssk
+...kwwwskssk
+....ksskkwk.
+....kwskkwk.
+...kwwwwwwk.
+...ksssskk..
+...kwkkwk...
+...kwkkwk...
