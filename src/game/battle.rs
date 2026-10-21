@@ -172,6 +172,16 @@ impl MobKind {
         }
     }
 
+    /// Gold dropped when defeated (M26).
+    pub fn gold(self) -> u32 {
+        match self {
+            MobKind::MetalSlime => 10,
+            MobKind::Skeleton => 3,
+            MobKind::RedSlime | MobKind::Goblin => 2,
+            _ => 1,
+        }
+    }
+
     /// Flies above the ground (and bobs).
     pub fn flies(self) -> bool {
         self == MobKind::Bat

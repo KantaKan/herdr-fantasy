@@ -53,6 +53,8 @@ pub struct Lifetime {
     pub badges: Vec<String>,
     /// Today's daily quest (M13).
     pub daily: super::daily::Daily,
+    /// Gold from monsters and bosses, spent in the town shop and inn (M26).
+    pub gold: u32,
 }
 
 impl Lifetime {

@@ -29,6 +29,8 @@ pub enum Key {
     Focus(usize),
     /// Settings: change the selected row by ±1 (row index, delta).
     Change(usize, i32),
+    /// Town: buy ware 1-3 or stay at the inn (4) for the selected hero.
+    Buy(usize),
 }
 
 impl Default for View {
@@ -60,6 +62,12 @@ impl View {
                 _ => {}
             }
             return Key::Stay;
+        }
+        if self.screen == Screen::Town
+            && let KeyCode::Char(c @ '1'..='4') = code
+            && heroes > 0
+        {
+            return Key::Buy(c as usize - '0' as usize);
         }
         match code {
             KeyCode::Char('s') => toggle(self, Screen::Settings),

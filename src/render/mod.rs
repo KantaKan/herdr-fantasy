@@ -93,8 +93,8 @@ pub fn run_demo(
             t,
             &mut world,
             bench_state.as_mut(),
-            |w, v, key| {
-                if let view::Key::Change(row, d) = key {
+            |w, v, key| match key {
+                view::Key::Change(row, d) => {
                     crate::game::settings::change(
                         w,
                         v.selected,
@@ -102,6 +102,10 @@ pub fn run_demo(
                         d,
                     );
                 }
+                view::Key::Buy(n) => {
+                    w.buy(v.selected, n);
+                }
+                _ => {}
             },
             |w, real_ms| {
                 let ms = real_ms * speed + carry;
@@ -160,6 +164,9 @@ pub fn run_live(config: &Config) -> anyhow::Result<()> {
                 {
                     tracing::warn!("cannot save {}: {e}", path.display());
                 }
+            }
+            view::Key::Buy(n) => {
+                w.buy(v.selected, n); // sets save_now
             }
             view::Key::Stay => {}
         };

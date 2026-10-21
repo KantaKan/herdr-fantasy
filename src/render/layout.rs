@@ -106,6 +106,7 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
                 encounter_wipe(w, scene, buf);
                 // Last, so a hero's ❗ or a float never cuts through it.
                 banner(w, scene, buf);
+                victory_window(w, scene, buf);
                 if w.welcome && crate::game::settings::first_run(w) {
                     screens::welcome(scene, buf);
                 }
@@ -939,6 +940,37 @@ fn encounter_wipe(w: &World, scene: Rect, buf: &mut Buffer) {
     }
 }
 
+/// The DQ results window after a boss falls (M25), in the middle of the battlefield.
+fn victory_window(w: &World, scene: Rect, buf: &mut Buffer) {
+    let Some(v) = &w.victory else { return };
+    let mut lines = vec![
+        (format!("The {} is defeated!", v.boss), 'y'),
+        ("The party is victorious!".to_string(), 'w'),
+        (format!("EXP +{}   Gold +{}", v.exp, v.gold), 'c'),
+    ];
+    if let Some(item) = &v.loot {
+        lines.push((format!("Found: {item}"), 'y'));
+    }
+    let wd = (lines
+        .iter()
+        .map(|(l, _)| l.chars().count())
+        .max()
+        .unwrap_or(0) as u16
+        + 6)
+    .min(scene.width);
+    let ht = (lines.len() as u16 + 2).min(scene.height);
+    let r = Rect::new(
+        scene.x + (scene.width - wd) / 2,
+        scene.y + (scene.height - ht) / 2,
+        wd,
+        ht,
+    );
+    window(buf, r, 'w');
+    for (k, (l, c)) in lines.iter().enumerate() {
+        text(buf, r.x + 3, r.y + 1 + k as u16, r.right() - 1, l, *c, 'k');
+    }
+}
+
 /// Greedy word wrap to `width` columns (a word longer than a row is cut).
 fn wrap(s: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
@@ -959,7 +991,7 @@ fn wrap(s: &str, width: usize) -> Vec<String> {
 }
 
 /// A Dragon Quest window: black, with a double-line border.
-fn window(buf: &mut Buffer, r: Rect, border: char) {
+pub(super) fn window(buf: &mut Buffer, r: Rect, border: char) {
     if r.width < 2 || r.height < 2 {
         return;
     }

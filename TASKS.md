@@ -185,13 +185,13 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** a long boss fight shows the boss attacking. (2026-10-21: `bosses_strike_back_and_knights_guard`.)
 
 ## M25 — Victory screen
-- [ ] A boss defeat opens a DQ results window: victorious, EXP, Gold, and loot, for a few seconds.
-  **Done when:** the demo shows the results window after the boss falls.
+- [x] A boss defeat opens a DQ results window: victorious, EXP, Gold, and loot, for a few seconds.
+  **Done when:** the demo shows the results window after the boss falls. (2026-10-21: seen in the demo — "The Sahur Knocker is defeated! … EXP +60 Gold +36 · Found: Rusty Shield".)
 
 ## M26 — Gold, shop and inn
-- [ ] Gold from monsters and bosses, saved per hero; shown on the character sheet and the party window row.
-- [ ] Town: a shop to buy gear with gold and an inn to buy the Well Rested buff.
-  **Done when:** gold earned in fights buys an item in the town shop.
+- [x] Gold from monsters and bosses, saved per hero; shown on the character sheet (and the shop).
+- [x] Town: a shop to buy gear with gold and an inn to buy the Well Rested buff.
+  **Done when:** gold earned in fights buys an item in the town shop. (2026-10-21: `gold_victory_window_and_the_shop`; town shop seen in a preview.)
 
 ## Manual QA checklist (run before each release)
 - [ ] Windows Terminal + native herdr: halfblock, auto-open, ask popup, transcript events.

@@ -219,7 +219,7 @@ pub fn character(w: &World, hero: Option<&Hero>, area: Rect, buf: &mut Buffer) {
             "Bosses {} won / {} lost · best streak {}",
             l.bosses_won, l.bosses_lost, l.best_streak
         ),
-        format!("Shadows raised {}", l.shadows),
+        format!("Shadows raised {} · Gold {} G", l.shadows, l.gold),
         match (
             &h.pet,
             crate::game::skins::for_level(h.level).filter(|_| w.skins),
@@ -454,6 +454,7 @@ pub fn help(area: Rect, buf: &mut Buffer) {
         ("c", "character sheet of the selected hero"),
         ("w", "this week's recap"),
         ("s", "settings: class, pet, skins, memes, motion"),
+        ("1-4", "in town: buy from the shop, or rest at the inn"),
         ("← →", "select hero"),
         ("Enter", "jump to that agent's pane"),
         ("Esc", "back to battle"),
@@ -469,7 +470,56 @@ pub fn help(area: Rect, buf: &mut Buffer) {
 
 /// The town of the selected hero's repo: buildings, decorations, heroes by their last
 /// file. `full` draws sprites; otherwise a one-line summary.
+/// The town's shop and inn (M26) across the top of the town scene: wares 1-3, the
+/// inn 4, and the selected hero's gold.
+fn shop_window(w: &World, hero: Option<&Hero>, scene: Rect, buf: &mut Buffer) {
+    use crate::game::loot::STAT_NAMES;
+    use crate::game::shop::{INN_PRICE, stock};
+    if scene.height < 6 || scene.width < 40 {
+        return;
+    }
+    let r = Rect::new(scene.x, scene.y, scene.width, 4); // in the sky: labels sit at the bottom
+    super::layout::window(buf, r, 'w');
+    let wares: Vec<String> = stock(&w.theme)
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            format!(
+                "{} {} +{} {} {}G",
+                i + 1,
+                s.name,
+                s.bonus,
+                STAT_NAMES[s.stat],
+                s.price
+            )
+        })
+        .collect();
+    let (x, end) = (r.x + 2, r.right() - 1);
+    let sx = put(buf, r, x, r.y + 1, "SHOP ", 'y', true);
+    put(buf, r, sx, r.y + 1, &wares.join("   "), 'w', false);
+    let ix = put(buf, r, x, r.y + 2, "INN  ", 'y', true);
+    let ix = put(
+        buf,
+        r,
+        ix,
+        r.y + 2,
+        &format!("4 Rest, Well Rested {INN_PRICE}G"),
+        'w',
+        false,
+    );
+    if let Some(h) = hero {
+        let s = format!("{}: {} G  (1-4 buy)", h.name, h.life.gold);
+        let gx = end.saturating_sub(s.chars().count() as u16 + 1).max(ix + 2);
+        put(buf, r, gx, r.y + 2, &s, 'c', false);
+    }
+}
+
 pub fn town_scene(w: &World, hero: Option<&Hero>, scene: Rect, buf: &mut Buffer, full: bool) {
+    town_buildings(w, hero, scene, buf, full);
+    shop_window(w, hero, scene, buf);
+}
+
+fn town_buildings(w: &World, hero: Option<&Hero>, scene: Rect, buf: &mut Buffer, full: bool) {
     let key = hero.map_or(w.repo_key.clone(), World::repo_of);
     let Some(t) = w.towns.get(&key) else {
         put(

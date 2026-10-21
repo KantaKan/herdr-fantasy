@@ -90,6 +90,17 @@ pub fn party_rank(level: u32) -> (&'static str, char) {
 const FIGHT_MS: u64 = 2_400;
 const FIGHT_GAP_MS: u64 = 800;
 pub const SWING_MS: u64 = 600;
+/// The results window after a boss falls (M25).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Victory {
+    pub boss: &'static str,
+    pub exp: u64,
+    pub gold: u32,
+    pub loot: Option<String>,
+    pub ms: u64,
+}
+pub const VICTORY_MS: u64 = 4_000;
+
 /// How often a boss strikes back, and how long the party windows shake (M24).
 const BOSS_TURN_MS: u64 = 3_600;
 pub const PARTY_HIT_MS: u64 = 450;
@@ -278,6 +289,8 @@ pub struct World {
     /// `party_hit_ms` after it lands (M24).
     boss_turn_ms: u64,
     pub party_hit_ms: u64,
+    /// The DQ results window after a boss falls (M25).
+    pub victory: Option<Victory>,
     /// Shots in flight, the Bard's song (attack up) and the Cleric's heal sparkle (M22).
     pub missiles: Vec<Shot>,
     pub buff_ms: u64,
@@ -318,6 +331,7 @@ impl World {
             mobs: Vec::new(),
             encounter_ms: 0,
             boss_turn_ms: 0,
+            victory: None,
             party_hit_ms: 0,
             missiles: Vec::new(),
             buff_ms: 0,
@@ -458,6 +472,7 @@ impl World {
                         .say(format!("The {} shrugs it off and laughs!", b.name));
                 } else {
                     let team: Vec<String> = b.fighters.clone();
+                    let team_tier = b.tier as u32;
                     let combo = team.len() >= 2;
                     // A team win pays everyone in the fight, plus half again.
                     let base = boss::victory_xp(b.fails);
@@ -483,9 +498,11 @@ impl World {
                     if b.fails >= 3 {
                         h.life.comebacks += 1;
                     }
+                    let mut found = None;
                     if let Some(item) = loot::roll(&h.name, h.life.bosses_won, b.id, b.tier) {
                         tracing::info!("{} found {}", h.name, item.name);
                         let text = format!("{} found {}!", h.name, item.name);
+                        found = Some(item.name.clone());
                         self.messages.say(text.clone());
                         announce(&mut self.headline, &mut self.headlines, text);
                         h.life.loot.push(item);
@@ -493,6 +510,15 @@ impl World {
                     }
                     h.say(format!("+{xp} XP{bonus}"), 'y');
                     self.messages.say(format!("The {} is defeated!", b.name));
+                    let gold = 10 * (b.tier as u32 + 1) + 3 * b.fails.min(5);
+                    h.life.gold += gold;
+                    self.victory = Some(Victory {
+                        boss: b.name,
+                        exp: xp,
+                        gold,
+                        loot: found,
+                        ms: VICTORY_MS,
+                    });
                     if combo {
                         self.messages
                             .say(format!("Team attack! Everyone gains {xp} XP."));
@@ -511,6 +537,7 @@ impl World {
                                 continue;
                             }
                             o.life.bosses_won += 1;
+                            o.life.gold += 10 * (team_tier + 1);
                             o.life.streak += 1;
                             o.life.best_streak = o.life.best_streak.max(o.life.streak);
                             o.act(Action::Attack, None);
@@ -726,6 +753,12 @@ impl World {
         }
         self.auto_battle(dt);
         self.boss_turn(dt);
+        if let Some(v) = &mut self.victory {
+            v.ms = v.ms.saturating_sub(dt);
+            if v.ms == 0 {
+                self.victory = None;
+            }
+        }
         for h in &mut self.heroes {
             // A win keeps the fighters there for the death animation; then home.
             // Without a boss, a hero is engaged while it fights the field wave.
@@ -757,6 +790,7 @@ impl World {
             || self.encounter_ms > 0
             || !self.missiles.is_empty()
             || self.party_hit_ms > 0
+            || self.victory.is_some()
             || self
                 .mobs
                 .iter()
@@ -831,7 +865,7 @@ impl World {
             if s.dmg == 0 {
                 continue;
             }
-            if let Some(hit) = battle::strike(&mut self.mobs, s.dmg)
+            if let Some(hit) = self.hit_mobs(&s.hero, s.dmg)
                 && quiet
                 && let Some(line) = s.line
             {
@@ -840,6 +874,56 @@ impl World {
         }
         self.buff_ms = self.buff_ms.saturating_sub(dt);
         self.heal_ms = self.heal_ms.saturating_sub(dt);
+    }
+
+    /// Strike the field wave for `hero`; a defeat pays its gold to that hero (M26).
+    fn hit_mobs(&mut self, hero: &str, dmg: u32) -> Option<String> {
+        let before: Vec<bool> = self.mobs.iter().map(|m| m.dying_ms.is_some()).collect();
+        let line = battle::strike(&mut self.mobs, dmg)?;
+        let gold: u32 = self
+            .mobs
+            .iter()
+            .zip(before)
+            .filter(|(m, was)| m.dying_ms.is_some() && !was)
+            .map(|(m, _)| m.kind.gold())
+            .sum();
+        if gold == 0 {
+            return Some(line);
+        }
+        if let Some(h) = self.heroes.iter_mut().find(|h| h.name == hero) {
+            h.life.gold += gold;
+        }
+        Some(format!("{line} (+{gold} G)"))
+    }
+
+    /// Buy from the town shop (1-3) or stay at the inn (4) for hero `i` (M26).
+    /// Returns what happened, for the message window.
+    pub fn buy(&mut self, i: usize, choice: usize) -> Option<String> {
+        let stock = super::shop::stock(&self.theme);
+        let h = self.heroes.get_mut(i)?;
+        let (price, what) = match choice {
+            1..=3 => (stock[choice - 1].price, stock[choice - 1].name),
+            4 => (super::shop::INN_PRICE, "a night at the inn"),
+            _ => return None,
+        };
+        let line = if h.life.gold < price {
+            format!(
+                "Not enough gold for {what}: {} G of {price} G.",
+                h.life.gold
+            )
+        } else {
+            h.life.gold -= price;
+            if choice == 4 {
+                h.rested_ms = super::hero::RESTED_MS;
+                format!("{} rests at the inn. Well rested! (-{price} G)", h.name)
+            } else {
+                h.life.loot.push(stock[choice - 1].item());
+                format!("{} buys the {what}! (-{price} G)", h.name)
+            }
+        };
+        self.save_now = true;
+        self.messages.say(line.clone());
+        Some(line)
     }
 
     /// Bosses strike back (M24): while the fight is on, every few seconds the boss uses
@@ -958,7 +1042,7 @@ impl World {
                 dmg,
                 line: Some(line),
             });
-        } else if let Some(hit) = battle::strike(&mut self.mobs, dmg) {
+        } else if let Some(hit) = self.hit_mobs(&name, dmg) {
             say(self, format!("{line} {hit}"));
         }
         // One swing in four the monster strikes back (cosmetic: stamina stays real).
@@ -997,9 +1081,10 @@ impl World {
         }
         // An edit is one line with what it hit: "Claude attacks! The Slime takes 12 damage!"
         let dmg = damage.unwrap_or(8);
+        let name = h.name.clone();
         let hit = match &self.boss {
             Some(b) => Some(format!("The {} takes {dmg} damage!", b.name)),
-            None => battle::strike(&mut self.mobs, dmg),
+            None => self.hit_mobs(&name, dmg),
         };
         match hit {
             Some(hit) => self.messages.say(format!("{line} {hit}")),
@@ -1478,6 +1563,42 @@ mod tests {
             knight.iter().any(|l| l.contains("A guards the party!")),
             "{knight:?}"
         );
+    }
+
+    #[test]
+    fn gold_victory_window_and_the_shop() {
+        use super::battle::{Mob, MobKind};
+        let mut w = World::new("r", "Forge Village");
+        let a = w.add_hero("A", Class::Knight);
+        w.mobs = vec![Mob {
+            kind: MobKind::RedSlime,
+            hp: 3,
+            max: 35,
+            hit_ms: 0,
+            last_damage: 0,
+            dying_ms: None,
+        }];
+        assert!(w.hit_mobs("A", 5).unwrap().ends_with("(+2 G)"));
+        assert_eq!(w.heroes[a].life.gold, 2);
+        fight(&mut w, a, false);
+        let v = w.victory.clone().expect("results window");
+        assert!(v.gold >= 10 && v.loot.is_some(), "{v:?}");
+        assert_eq!(w.heroes[a].life.gold, 2 + v.gold);
+        // Too poor for the Steel Sword (120 G), rich enough for the inn (30 G).
+        assert!(w.buy(a, 1).unwrap().starts_with("Not enough gold"));
+        let gold = w.heroes[a].life.gold;
+        let loot = w.heroes[a].life.loot.len();
+        if gold >= 30 {
+            w.buy(a, 4);
+            assert_eq!(w.heroes[a].life.gold, gold - 30);
+            assert!(w.heroes[a].rested_ms > 0);
+        }
+        w.heroes[a].life.gold = 500;
+        w.buy(a, 1);
+        assert_eq!(w.heroes[a].life.loot.len(), loot + 1);
+        assert_eq!(w.heroes[a].life.loot.last().unwrap().name, "Steel Sword");
+        w.update(VICTORY_MS);
+        assert!(w.victory.is_none());
     }
 
     #[test]
