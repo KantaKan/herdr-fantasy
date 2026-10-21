@@ -181,8 +181,8 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
   **Done when:** two themes show different monsters. (2026-10-21: `mobs_take_damage_die_and_waves_vary` checks Forge Village ≠ Lantern City; goblins and red slimes in the demo.)
 
 ## M24 — Bosses strike back
-- [ ] While a boss fight runs, the boss uses a named move every few seconds ("The Test Golem uses Assertion Slam!"); the party windows shake and the heroes take cosmetic damage.
-  **Done when:** a long boss fight shows the boss attacking.
+- [x] While a boss fight runs, the boss uses a named move every few seconds ("The Test Golem uses Assertion Slam!"); the party windows shake and the heroes take cosmetic damage.
+  **Done when:** a long boss fight shows the boss attacking. (2026-10-21: `bosses_strike_back_and_knights_guard`.)
 
 ## M25 — Victory screen
 - [ ] A boss defeat opens a DQ results window: victorious, EXP, Gold, and loot, for a few seconds.

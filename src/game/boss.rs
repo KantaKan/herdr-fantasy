@@ -193,6 +193,23 @@ pub struct Species {
     pub name: &'static str,
 }
 
+/// The move a boss uses when it strikes back at the party (M24), by species id.
+pub fn signature_move(id: &str) -> &'static str {
+    match id {
+        "test_golem" => "Assertion Slam",
+        "snapshot_mimic" => "Snapshot Bite",
+        "flaky_ghost" => "Random Failure",
+        "build_wyrm" => "Compile Breath",
+        "linker_kraken" => "Undefined Reference",
+        "dependency_hydra" => "Version Conflict",
+        "lint_imp" => "Nitpick",
+        "typo_gremlin" => "Misspell",
+        "slime_king" => "Royal Ooze",
+        "sahur_knocker" => "TUNG TUNG TUNG",
+        _ => "Smash",
+    }
+}
+
 /// Rare boss of any kind: 1 in `RARE_ODDS` commands summon it instead of the roster.
 const RARE: Species = Species {
     id: "sahur_knocker",

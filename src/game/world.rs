@@ -90,6 +90,9 @@ pub fn party_rank(level: u32) -> (&'static str, char) {
 const FIGHT_MS: u64 = 2_400;
 const FIGHT_GAP_MS: u64 = 800;
 pub const SWING_MS: u64 = 600;
+/// How often a boss strikes back, and how long the party windows shake (M24).
+const BOSS_TURN_MS: u64 = 3_600;
+pub const PARTY_HIT_MS: u64 = 450;
 /// A shot's flight time, the Cleric's heal sparkle, and the Bard's attack song.
 pub const MISSILE_MS: u64 = 350;
 pub const HEAL_MS: u64 = 900;
@@ -271,6 +274,10 @@ pub struct World {
     pub mobs: Vec<Mob>,
     /// Boss-encounter wipe time left (M21).
     pub encounter_ms: u64,
+    /// The boss's next strike at the party counts up here; the party shakes for
+    /// `party_hit_ms` after it lands (M24).
+    boss_turn_ms: u64,
+    pub party_hit_ms: u64,
     /// Shots in flight, the Bard's song (attack up) and the Cleric's heal sparkle (M22).
     pub missiles: Vec<Shot>,
     pub buff_ms: u64,
@@ -310,6 +317,8 @@ impl World {
             messages: Messages::default(),
             mobs: Vec::new(),
             encounter_ms: 0,
+            boss_turn_ms: 0,
+            party_hit_ms: 0,
             missiles: Vec::new(),
             buff_ms: 0,
             heal_ms: 0,
@@ -716,6 +725,7 @@ impl World {
             self.boss = None;
         }
         self.auto_battle(dt);
+        self.boss_turn(dt);
         for h in &mut self.heroes {
             // A win keeps the fighters there for the death animation; then home.
             // Without a boss, a hero is engaged while it fights the field wave.
@@ -746,6 +756,7 @@ impl World {
             || self.messages.busy()
             || self.encounter_ms > 0
             || !self.missiles.is_empty()
+            || self.party_hit_ms > 0
             || self
                 .mobs
                 .iter()
@@ -829,6 +840,53 @@ impl World {
         }
         self.buff_ms = self.buff_ms.saturating_sub(dt);
         self.heal_ms = self.heal_ms.saturating_sub(dt);
+    }
+
+    /// Bosses strike back (M24): while the fight is on, every few seconds the boss uses
+    /// its move on the party. Cosmetic: the windows shake and the heroes show damage; a
+    /// Knight in the fight guards the party and halves it.
+    fn boss_turn(&mut self, dt: u64) {
+        self.party_hit_ms = self.party_hit_ms.saturating_sub(dt);
+        let Some(b) = self.boss.as_ref().filter(|b| b.state != BossState::Dying) else {
+            self.boss_turn_ms = 0;
+            return;
+        };
+        if !self.heroes.iter().any(|h| h.engaged) {
+            return;
+        }
+        self.boss_turn_ms += dt;
+        let every = BOSS_TURN_MS + (b.fails as u64 % 3) * 400;
+        if self.boss_turn_ms < every {
+            return;
+        }
+        self.boss_turn_ms = 0;
+        let (name, mv) = (b.name, boss::signature_move(b.id));
+        let base = match b.tier {
+            Tier::Little => 2,
+            Tier::Normal => 4,
+            Tier::Big => 7,
+        } + (self.clock_ms / 131 % 3) as u32;
+        let guard = self
+            .heroes
+            .iter()
+            .find(|h| h.engaged && h.class == Class::Knight)
+            .map(|h| h.name.clone());
+        let dmg = if guard.is_some() {
+            base.div_ceil(2)
+        } else {
+            base
+        };
+        self.messages.say(format!("The {name} uses {mv}!"));
+        match guard {
+            Some(k) => self.messages.say(format!(
+                "{k} guards the party! Everyone takes {dmg} damage."
+            )),
+            None => self.messages.say(format!("The party takes {dmg} damage!")),
+        }
+        for h in self.heroes.iter_mut().filter(|h| h.engaged) {
+            h.say(format!("-{dmg}"), 'r');
+        }
+        self.party_hit_ms = PARTY_HIT_MS;
     }
 
     /// One swing (or shot) of hero `k` at the field wave, with its class trait.
@@ -1394,6 +1452,32 @@ mod tests {
         let mut w = world(Class::Knight);
         w.swing(0, 4);
         assert_eq!(w.heroes[0].float.as_ref().unwrap().0, "BLOCK");
+    }
+
+    #[test]
+    fn bosses_strike_back_and_knights_guard() {
+        let said = |class| {
+            let mut w = World::new("r", "t");
+            let a = w.add_hero("A", class);
+            w.apply(GameEvent::BossFight(a, BossKind::Test, "cargo test".into()));
+            let mut lines = Vec::new();
+            for _ in 0..30 {
+                w.update(200); // 6 s of fighting
+                lines.extend(w.messages.lines.iter().cloned());
+            }
+            lines
+        };
+        let mage = said(Class::Mage);
+        assert!(mage.iter().any(|l| l.contains(" uses ")), "{mage:?}");
+        assert!(
+            mage.iter().any(|l| l.contains("The party takes")),
+            "{mage:?}"
+        );
+        let knight = said(Class::Knight);
+        assert!(
+            knight.iter().any(|l| l.contains("A guards the party!")),
+            "{knight:?}"
+        );
     }
 
     #[test]

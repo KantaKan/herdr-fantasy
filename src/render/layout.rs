@@ -636,7 +636,13 @@ fn draw_boss(w: &World, scene: Rect, buf: &mut Buffer) -> bool {
         0
     };
     let by = stand_y(scene, f.h);
-    halfblock::draw(buf, scene, f, bx + shake, by, false);
+    // The boss lunges at the party as its strike lands (M24).
+    let lunge = if w.party_hit_ms > crate::game::world::PARTY_HIT_MS / 2 && !w.reduced_motion {
+        -4
+    } else {
+        0
+    };
+    halfblock::draw(buf, scene, f, bx + shake + lunge, by, false);
     if blow {
         let cy = by + f.h as i32 / 2;
         for (dx, dy, c) in [
@@ -1107,10 +1113,16 @@ fn shots(
 fn dq_band(w: &World, view: &View, band: Rect, buf: &mut Buffer) {
     let fit = ((band.width.saturating_sub(24)) / PARTY_W).max(1) as usize;
     let shown = w.heroes.len().min(fit).min(MAX_DRAWN);
+    let hit = w.party_hit_ms > 0 && !w.reduced_motion;
+    let shake = if hit && (w.party_hit_ms / 60).is_multiple_of(2) {
+        1
+    } else {
+        0
+    };
     for (i, h) in w.heroes.iter().take(shown).enumerate() {
-        let r = Rect::new(band.x + i as u16 * PARTY_W, band.y, PARTY_W, BAND);
+        let r = Rect::new(band.x + i as u16 * PARTY_W + shake, band.y, PARTY_W, BAND);
         let blocked = h.status == Status::Blocked;
-        let border = if blocked && (w.clock_ms / 400).is_multiple_of(2) {
+        let border = if hit || (blocked && (w.clock_ms / 400).is_multiple_of(2)) {
             'r'
         } else if i == view.selected {
             'y'
