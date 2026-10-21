@@ -406,6 +406,10 @@ pub struct Hero {
     pub engaged: bool,
     /// Last level the message window announced (0 = not yet seen; loads don't count).
     pub announced_level: u32,
+    /// Auto-battle (M21): time left of a field fight with the slimes, and the wait
+    /// before the next one.
+    pub mob_fight_ms: u64,
+    pub fight_cooldown_ms: u64,
     /// 0.0 at its spot in the line … 1.0 at the boss.
     pub charge: f32,
     pub life: Lifetime,
@@ -452,6 +456,8 @@ impl Hero {
             boss_tool: None,
             engaged: false,
             announced_level: 0,
+            mob_fight_ms: 0,
+            fight_cooldown_ms: 0,
             charge: 0.0,
             life: Lifetime::default(),
             pet: None,

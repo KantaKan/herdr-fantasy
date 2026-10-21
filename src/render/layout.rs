@@ -548,7 +548,7 @@ fn boss_sprite(w: &World, scene: Rect) -> Option<(&'static super::sprites::Frame
 
 /// Swing rhythm in melee: the 3 attack frames (240 ms), then the wind-up held while
 /// it lines up the next blow. Returns the attack-sheet time to show.
-const SWING_MS: u64 = 600;
+use crate::game::world::SWING_MS;
 fn swing_ms(h: &Hero) -> u64 {
     let t = h.anim_ms % SWING_MS;
     if t < 240 { t } else { 0 }
@@ -556,7 +556,35 @@ fn swing_ms(h: &Hero) -> u64 {
 
 /// Is a melee blow landing on the boss right now (the strike frame)?
 fn blow_lands(h: &Hero) -> bool {
-    h.engaged && h.charge >= 1.0 && (80..160).contains(&(h.anim_ms % SWING_MS))
+    h.engaged
+        && h.mob_fight_ms == 0
+        && h.charge >= 1.0
+        && (80..160).contains(&(h.anim_ms % SWING_MS))
+}
+
+/// Where a charging hero runs to: in front of the boss, or of the front slime of the
+/// field wave (`slime_gap` = the columns between slimes, as `draw_mobs` lays them out).
+fn charge_target(w: &World, scene: Rect, right: i32, max: usize) -> Option<i32> {
+    if let Some((_, bx)) = boss_sprite(w, scene) {
+        return Some(bx);
+    }
+    let n = w.mobs.len().min(max) as i32;
+    let front = w.mobs.iter().take(max).position(|m| m.dying_ms.is_none())? as i32;
+    let fw = sheet("slime").frames[0].w as i32;
+    Some(right - (n - front) * (fw + 3))
+}
+
+/// Order of `h` among the heroes charging the same target (they line up).
+fn queue_spot(w: &World, h: &Hero) -> i32 {
+    match &w.boss {
+        Some(b) => b.fighters.iter().position(|n| *n == h.name).unwrap_or(0) as i32,
+        None => w
+            .heroes
+            .iter()
+            .take_while(|o| o.name != h.name)
+            .filter(|o| o.mob_fight_ms > 0)
+            .count() as i32,
+    }
 }
 
 /// The boss with its hit flash, shake, and melee blows (knock-back + spark). Returns
@@ -608,7 +636,7 @@ fn draw_boss(w: &World, scene: Rect, buf: &mut Buffer) -> bool {
 fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     backdrop(w, scene, buf);
     fireworks(w, scene, buf);
-    let boss_at = boss_sprite(w, scene).map(|(_, x)| x);
+    let boss_at = charge_target(w, scene, scene.width as i32, 3);
     // Pets stand at their hero's front foot, so a party with pets spreads out.
     let step: u16 = if w.heroes.iter().any(|h| h.pet.is_some()) {
         23
@@ -648,11 +676,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         if h.charge > 0.0
             && let Some(bx) = boss_at.filter(|_| !w.reduced_motion)
         {
-            let k = w
-                .boss
-                .as_ref()
-                .and_then(|b| b.fighters.iter().position(|n| *n == h.name))
-                .unwrap_or(0) as i32;
+            let k = queue_spot(w, h);
             let target = bx - 12 - k * 7;
             let e = h.charge * h.charge * (3.0 - 2.0 * h.charge); // ease in-out
             dx += ((target - x as i32) as f32 * e).round() as i32;
@@ -1098,7 +1122,7 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     // walk beside them, and fighters charge the (smallest) boss.
     let pets = w.heroes.iter().any(|h| h.pet.is_some());
     let step: u16 = if pets { 21 } else { 13 };
-    let boss_at = boss_sprite(w, scene).map(|(_, x)| x);
+    let boss_at = charge_target(w, scene, scene.width as i32, 2);
     let slots = (scene.width.saturating_sub(14) / step).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);
     for (i, h) in w.heroes.iter().take(drawn).enumerate() {
@@ -1127,11 +1151,7 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         if h.charge > 0.0
             && let Some(bx) = boss_at.filter(|_| !w.reduced_motion)
         {
-            let k = w
-                .boss
-                .as_ref()
-                .and_then(|b| b.fighters.iter().position(|n| *n == h.name))
-                .unwrap_or(0) as i32;
+            let k = queue_spot(w, h);
             let e = h.charge * h.charge * (3.0 - 2.0 * h.charge);
             dx += ((bx - 9 - k * 6 - x as i32) as f32 * e).round() as i32;
             flip |= !h.engaged;

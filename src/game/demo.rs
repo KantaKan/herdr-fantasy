@@ -161,7 +161,7 @@ pub fn party(seed: u64, classes: &Classes) -> (World, Demo) {
         loop_ms: 42_000,
         next_act: vec![1_000; w.heroes.len()],
         loops: 0,
-        act_gap: (900, 2200),
+        act_gap: (1_800, 4_200),
         flood: false,
     };
     (w, demo)

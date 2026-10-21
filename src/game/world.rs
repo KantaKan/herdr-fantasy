@@ -85,6 +85,12 @@ pub fn party_rank(level: u32) -> (&'static str, char) {
     }
 }
 
+/// Auto-battle: one field fight (charge + about 3 swings), the gap before the next,
+/// and the melee swing period (the renderer's attack rhythm).
+const FIGHT_MS: u64 = 2_400;
+const FIGHT_GAP_MS: u64 = 800;
+pub const SWING_MS: u64 = 600;
+
 /// Run to the boss, and back home.
 const CHARGE_MS: f32 = 500.0;
 const RETURN_MS: f32 = 800.0;
@@ -687,10 +693,12 @@ impl World {
         {
             self.boss = None;
         }
+        self.auto_battle(dt);
         for h in &mut self.heroes {
             // A win keeps the fighters there for the death animation; then home.
+            // Without a boss, a hero is engaged while it fights the field wave.
             if self.boss.is_none() {
-                h.engaged = false;
+                h.engaged = h.mob_fight_ms > 0;
             }
             h.charge = if h.engaged {
                 (h.charge + dt as f32 / CHARGE_MS).min(1.0)
@@ -721,6 +729,67 @@ impl World {
                 .any(|m| m.hit_ms > 0 || m.dying_ms.is_some())
     }
 
+    /// Auto-battle (M21): a working hero with nothing else to show charges the field
+    /// wave, swings (each strike frame hits the front slime), and runs back; a slime
+    /// sometimes hits back. Real actions and bosses always come first.
+    fn auto_battle(&mut self, dt: u64) {
+        let standing = self.mobs.iter().any(|m| m.dying_ms.is_none());
+        let boss_up = self.boss.is_some();
+        let quiet = !self.messages.busy();
+        let mut swings = Vec::new();
+        for (k, h) in self.heroes.iter_mut().enumerate() {
+            let seed = self.clock_ms / 97 + k as u64 * 7_919;
+            let free = h.status == Status::Working
+                && !h.busy()
+                && h.leaving_ms.is_none()
+                && h.rest_ms == 0;
+            if boss_up || !free || !standing {
+                if h.mob_fight_ms > 0 {
+                    h.mob_fight_ms = 0;
+                    h.fight_cooldown_ms = FIGHT_GAP_MS;
+                }
+                continue;
+            }
+            if h.mob_fight_ms > 0 {
+                h.mob_fight_ms = h.mob_fight_ms.saturating_sub(dt);
+                // The renderer's swing lands at 80 ms into each 600 ms swing.
+                let t = h.anim_ms % SWING_MS;
+                if h.charge >= 1.0 && t >= 80 && t < 80 + dt.min(SWING_MS) {
+                    swings.push((k, seed));
+                }
+                if h.mob_fight_ms == 0 {
+                    h.fight_cooldown_ms = FIGHT_GAP_MS + seed % 1_200;
+                }
+            } else {
+                h.fight_cooldown_ms = h.fight_cooldown_ms.saturating_sub(dt);
+                if h.fight_cooldown_ms == 0 {
+                    h.mob_fight_ms = FIGHT_MS;
+                }
+            }
+        }
+        for (k, seed) in swings {
+            let dmg = 2 + self.heroes[k].level / 3 + (seed % 4) as u32;
+            let hit = battle::strike(&mut self.mobs, dmg);
+            let name = self.heroes[k].name.clone();
+            if quiet && let Some(hit) = hit {
+                self.messages.say(format!("{name} attacks! {hit}"));
+            }
+            // One swing in four, the slime strikes back (cosmetic: stamina is real).
+            if seed % 4 == 0
+                && let Some(m) = self.mobs.iter().find(|m| m.dying_ms.is_none())
+            {
+                let hit = 1 + (seed / 4 % 3) as u32;
+                if quiet {
+                    self.messages.say(format!(
+                        "The {} attacks! {name} takes {hit} damage.",
+                        m.kind.name()
+                    ));
+                }
+                self.heroes[k].say(format!("-{hit}"), 'r');
+            }
+        }
+    }
+
     /// Narrate a hero's action in the message window; an edit also hits the first enemy
     /// standing (the boss when there is one, else the field wave) for `damage`.
     pub fn on_action(&mut self, i: usize, action: Action, damage: Option<u32>) {
@@ -728,21 +797,20 @@ impl World {
         if h.status != Status::Working {
             return;
         }
-        self.messages
-            .say(battle::action_line(&h.name, action, h.detail.as_deref()));
+        let line = battle::action_line(&h.name, action, h.detail.as_deref());
         if action != Action::Attack {
+            self.messages.say(line);
             return;
         }
+        // An edit is one line with what it hit: "Claude attacks! The Slime takes 12 damage!"
         let dmg = damage.unwrap_or(8);
-        match &self.boss {
-            Some(b) => self
-                .messages
-                .say(format!("The {} takes {dmg} damage!", b.name)),
-            None => {
-                for line in battle::strike(&mut self.mobs, dmg) {
-                    self.messages.say(line);
-                }
-            }
+        let hit = match &self.boss {
+            Some(b) => Some(format!("The {} takes {dmg} damage!", b.name)),
+            None => battle::strike(&mut self.mobs, dmg),
+        };
+        match hit {
+            Some(hit) => self.messages.say(format!("{line} {hit}")),
+            None => self.messages.say(line),
         }
     }
 }
@@ -1119,6 +1187,35 @@ mod tests {
         }
         assert!(said.iter().any(|l| l.contains("is defeated!")), "{said:?}");
         assert!(said.iter().any(|l| l.contains("A gains")), "{said:?}");
+    }
+
+    #[test]
+    fn working_heroes_fight_the_field_wave_until_real_work_comes() {
+        let mut w = World::new("r", "t");
+        let a = w.add_hero("A", Class::Knight);
+        w.apply(GameEvent::Status(a, Status::Working));
+        w.update(1); // the wave draws near
+        let start: u32 = w.mobs.iter().map(|m| m.hp).sum();
+        for _ in 0..60 {
+            w.update(50);
+        }
+        let h = &w.heroes[a];
+        assert!(
+            h.mob_fight_ms > 0 || h.fight_cooldown_ms > 0,
+            "fought or resting"
+        );
+        let now: u32 = w.mobs.iter().map(|m| m.hp).sum();
+        assert!(now < start || w.waves > 1, "the slimes took hits");
+        // A real action ends the field fight; the hero runs back to show it.
+        w.heroes[a].mob_fight_ms = FIGHT_MS;
+        w.apply(GameEvent::Act(
+            a,
+            Action::Study,
+            Some("reading the big book".into()),
+        ));
+        w.update(16);
+        assert_eq!(w.heroes[a].mob_fight_ms, 0);
+        assert!(!w.heroes[a].engaged);
     }
 
     #[test]

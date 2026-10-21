@@ -222,11 +222,9 @@ pub fn appear_line(mobs: &[Mob]) -> String {
 }
 
 /// Hit the first standing mob for `damage` (Metal Slimes shrug most of it off). Returns
-/// the lines to narrate.
-pub fn strike(mobs: &mut [Mob], damage: u32) -> Vec<String> {
-    let Some(m) = mobs.iter_mut().find(|m| m.dying_ms.is_none()) else {
-        return Vec::new();
-    };
+/// what happened, one sentence: "The Slime takes 12 damage!" (and "...is defeated!").
+pub fn strike(mobs: &mut [Mob], damage: u32) -> Option<String> {
+    let m = mobs.iter_mut().find(|m| m.dying_ms.is_none())?;
     let dmg = match m.kind {
         MobKind::MetalSlime => damage.clamp(1, 2),
         _ => damage.max(1),
@@ -235,12 +233,11 @@ pub fn strike(mobs: &mut [Mob], damage: u32) -> Vec<String> {
     m.hit_ms = HIT_MS;
     m.last_damage = dmg;
     let name = m.kind.name();
-    let mut out = vec![format!("The {name} takes {dmg} damage!")];
     if m.hp == 0 {
         m.dying_ms = Some(0);
-        out.push(format!("The {name} is defeated!"));
+        return Some(format!("The {name} takes {dmg} damage and is defeated!"));
     }
-    out
+    Some(format!("The {name} takes {dmg} damage!"))
 }
 
 #[cfg(test)]
@@ -283,12 +280,12 @@ mod tests {
             last_damage: 0,
             dying_ms: None,
         }];
-        assert_eq!(strike(&mut mobs, 12), ["The Slime takes 12 damage!"]);
+        assert_eq!(strike(&mut mobs, 12).unwrap(), "The Slime takes 12 damage!");
         assert_eq!(
-            strike(&mut mobs, 12),
-            ["The Slime takes 12 damage!", "The Slime is defeated!"]
+            strike(&mut mobs, 12).unwrap(),
+            "The Slime takes 12 damage and is defeated!"
         );
-        assert!(strike(&mut mobs, 5).is_empty(), "nothing left standing");
+        assert!(strike(&mut mobs, 5).is_none(), "nothing left standing");
         let kinds: std::collections::HashSet<_> =
             (0..200).flat_map(wave).map(|m| m.kind as u8).collect();
         assert_eq!(kinds.len(), 3, "all three slimes show up");
