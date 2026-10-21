@@ -1,6 +1,6 @@
 id = "kantakan.herdr-fantasy"
 name = "herdr fantasy"
-version = "0.4.1"
+version = "0.4.2"
 min_herdr_version = "0.9.0"
 description = "Your coding agents as an RPG party"
 platforms = ["linux", "macos", "windows"]

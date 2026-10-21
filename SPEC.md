@@ -397,7 +397,7 @@ Classify `Bash` / `PowerShell` commands from the transcript `tool_use.input.comm
 - Gimmicks are cosmetic only; they never change real XP.
 
 ### 6.6 Rubber Duck and Quips
-- One Rubber Duck per Stage: by the campfire when the party camps, otherwise just in front of the enemies. Never levels, never played by an Agent. Its speech bubble sits top-right of the scene for 5 s (full and compact layouts). Every Duck quip is logged at info level.
+- One Rubber Duck per Stage: by the campfire when the party camps, otherwise with the party, right behind the last hero and facing the enemies (hidden if the enemies stand too close). Never levels, never played by an Agent. Its speech bubble sits top-right of the scene for 5 s (full and compact layouts). Every Duck quip is logged at info level.
 - Triggers (each from real state): a Boss survives ≥ 2 times in a row; a Hero blocked ≥ 5 min; a Quest running ≥ 30 min. At most one Duck Quip per 2 min.
 - Quips are original, text-only lines (no images, no quotes from copyrighted works) in a built-in table keyed by event, e.g. Boss defeated after ≥ 3 failures → "it works on my machine"; `git push --force` → "no fear"; Sahur Knocker laughs → "TUNG TUNG TUNG!"; Rest at ≥ 95% context → "I have no memory of this place".
 - `memes = false` disables all Quips; the Duck still sits there.

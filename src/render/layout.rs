@@ -727,6 +727,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         summon_count(h, scene, buf, x);
     }
     plus_n(w, scene, buf, 1 + drawn as u16 * step, drawn);
+    party_duck(w, scene, buf, 1 + drawn as i32 * step as i32, 3);
 
     let right = scene.width as i32;
     if draw_boss(w, scene, buf) {
@@ -734,17 +735,6 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         campfire(w, scene, buf, right, true);
     } else {
         draw_mobs(w, scene, buf, right, 3);
-        // The Rubber Duck watches the fight from just in front of the enemies.
-        let d = sheet("rubber_duck").frame(
-            if w.duck.says.is_some() {
-                "quack"
-            } else {
-                "idle"
-            },
-            w.clock_ms,
-        );
-        let dx = right - 2 * 12 - d.w as i32 - 3;
-        halfblock::draw(buf, scene, d, dx, stand_y(scene, d.h), true);
     }
     if let Some(b) = &w.boss
         && b.id == "sahur_knocker"
@@ -1003,6 +993,27 @@ fn enemy_window(w: &World, scene: Rect, buf: &mut Buffer) {
     text(buf, r.x + 2, r.y + 1, r.right() - 1, &label, fg, 'k');
 }
 
+/// The Rubber Duck waddles with the party, right behind the last hero, facing the
+/// enemies (at camp it sits by the fire instead). Skipped when the enemies are too close.
+fn party_duck(w: &World, scene: Rect, buf: &mut Buffer, x: i32, mobs: usize) {
+    if camp(w) {
+        return;
+    }
+    let d = sheet("rubber_duck").frame(
+        if w.duck.says.is_some() {
+            "quack"
+        } else {
+            "idle"
+        },
+        w.clock_ms,
+    );
+    let right = scene.width as i32;
+    let enemy = charge_target(w, scene, right, mobs).unwrap_or(right);
+    if x + d.w as i32 + 2 < enemy {
+        halfblock::draw(buf, scene, d, x, stand_y(scene, d.h), false);
+    }
+}
+
 /// The Dragon Quest band: a window per hero (the selected one in yellow, a blocked one
 /// blinking red) and the message window typing out what happens.
 fn dq_band(w: &World, view: &View, band: Rect, buf: &mut Buffer) {
@@ -1181,6 +1192,7 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         }
     }
     plus_n(w, scene, buf, 1 + drawn as u16 * step, drawn);
+    party_duck(w, scene, buf, 1 + drawn as i32 * step as i32, 2);
     if draw_boss(w, scene, buf) {
     } else if camp(w) {
         campfire(w, scene, buf, scene.width as i32, false);
