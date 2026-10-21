@@ -647,6 +647,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     let slots = (scene.width.saturating_sub(enemy_zone + 1) / step).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);
     let mut counts = Vec::new();
+    let mut at: Vec<(&str, i32, i32)> = Vec::new();
     for (i, h) in w.heroes.iter().take(drawn).enumerate() {
         let x = 1 + i as u16 * step;
         // Exhausted heroes walk at half speed (SPEC §5.4).
@@ -703,6 +704,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         summons(w, h, scene, buf, x as i32 + dx + 11);
         counts.push((h, x as i32 + dx + 11));
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
+        at.push((h.name.as_str(), x as i32 + dx, py));
         pet(w, h, scene, buf, x as i32 + dx + 12, py - ground, flip);
         prop(h, scene, buf, x as i32 + dx, py);
         caption(h, scene, buf, x as i32 + dx, py);
@@ -745,6 +747,7 @@ fn full_scene(w: &World, scene: Rect, buf: &mut Buffer) {
         let x = scene.right().saturating_sub(s.chars().count() as u16 + 2);
         text_on(buf, x, scene.y, scene.right(), s, 'o');
     }
+    shots(w, scene, buf, &at, 3, 6);
     duck_bubble(w, scene, buf);
 }
 
@@ -1014,6 +1017,67 @@ fn party_duck(w: &World, scene: Rect, buf: &mut Buffer, x: i32, mobs: usize) {
     }
 }
 
+/// Ranged shots in flight (M22) from their hero's hand to the front enemy, and the
+/// Cleric's heal sparkles over the party. `at` = (hero, x, top) as drawn; `hand` = px
+/// from the sprite top to its hand.
+fn shots(
+    w: &World,
+    scene: Rect,
+    buf: &mut Buffer,
+    at: &[(&str, i32, i32)],
+    mobs: usize,
+    hand: i32,
+) {
+    use crate::game::hero::Missile;
+    use crate::game::world::{HEAL_MS, MISSILE_MS};
+    let Some(tx) = charge_target(w, scene, scene.width as i32, mobs) else {
+        return;
+    };
+    for s in &w.missiles {
+        let Some(&(_, hx, hy)) = at.iter().find(|(n, _, _)| *n == s.hero) else {
+            continue;
+        };
+        let p = (s.t_ms as f32 / MISSILE_MS as f32).min(1.0);
+        let (sx, sy) = (hx + 13, hy + hand);
+        let x = sx + ((tx + 3 - sx) as f32 * p) as i32;
+        let arc = if s.kind == Missile::Arrow || s.kind == Missile::Note {
+            (4.0 * p * (1.0 - p) * 3.0) as i32
+        } else {
+            0
+        };
+        let y = sy - arc;
+        let px: &[(i32, i32, char)] = match s.kind {
+            Missile::Fireball => &[
+                (0, 0, 'y'),
+                (-1, 0, 'o'),
+                (0, -1, 'o'),
+                (0, 1, 'o'),
+                (-2, 0, 'r'),
+                (1, 0, 'o'),
+            ],
+            Missile::Arrow => &[
+                (0, 0, 'w'),
+                (-1, 0, 'S'),
+                (-2, 0, 'S'),
+                (-3, 0, 'S'),
+                (-4, 0, 'r'),
+            ],
+            Missile::Note => &[(0, 0, 'y'), (1, -1, 'y'), (1, -2, 'y'), (2, -2, 'C')],
+        };
+        for &(dx, dy, c) in px {
+            pixel(buf, scene, x + dx, y + dy, c);
+        }
+    }
+    if w.heal_ms > 0 && !w.reduced_motion {
+        let rise = ((HEAL_MS - w.heal_ms) / 120) as i32;
+        for &(_, hx, hy) in at {
+            for (k, (dx, c)) in [(3, 'G'), (8, 'w'), (12, 'G')].iter().enumerate() {
+                pixel(buf, scene, hx + dx, hy + 10 - rise - k as i32 * 2, *c);
+            }
+        }
+    }
+}
+
 /// The Dragon Quest band: a window per hero (the selected one in yellow, a blocked one
 /// blinking red) and the message window typing out what happens.
 fn dq_band(w: &World, view: &View, band: Rect, buf: &mut Buffer) {
@@ -1136,6 +1200,7 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     let boss_at = charge_target(w, scene, scene.width as i32, 2);
     let slots = (scene.width.saturating_sub(14) / step).clamp(1, MAX_DRAWN as u16);
     let drawn = w.heroes.len().min(slots as usize);
+    let mut at: Vec<(&str, i32, i32)> = Vec::new();
     for (i, h) in w.heroes.iter().take(drawn).enumerate() {
         let x = 1 + i as u16 * step;
         let tag = match h.anim() {
@@ -1186,6 +1251,7 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
             );
         }
         halfblock::draw(buf, scene, f, x as i32 + dx, py, flip);
+        at.push((h.name.as_str(), x as i32 + dx, py));
         float_text(h, scene, buf, x.saturating_sub(2), py);
         if let Some((s, fg)) = badge(h) {
             text(buf, scene.x + x + 9, scene.y, scene.right(), s, fg, 'n');
@@ -1199,6 +1265,7 @@ fn compact_scene(w: &World, scene: Rect, buf: &mut Buffer) {
     } else {
         draw_mobs(w, scene, buf, scene.width as i32, 2);
     }
+    shots(w, scene, buf, &at, 2, 5);
     duck_bubble(w, scene, buf);
 }
 

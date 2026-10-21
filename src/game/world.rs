@@ -90,6 +90,21 @@ pub fn party_rank(level: u32) -> (&'static str, char) {
 const FIGHT_MS: u64 = 2_400;
 const FIGHT_GAP_MS: u64 = 800;
 pub const SWING_MS: u64 = 600;
+/// A shot's flight time, the Cleric's heal sparkle, and the Bard's attack song.
+pub const MISSILE_MS: u64 = 350;
+pub const HEAL_MS: u64 = 900;
+const BUFF_MS: u64 = 8_000;
+
+/// A ranged attack flying from `hero` to the front enemy; `dmg` lands on arrival
+/// (0 = for show, e.g. at a boss) and `line` is narrated with the hit.
+#[derive(Debug, Clone)]
+pub struct Shot {
+    pub hero: String,
+    pub kind: super::hero::Missile,
+    pub t_ms: u64,
+    pub dmg: u32,
+    pub line: Option<String>,
+}
 
 /// Run to the boss, and back home.
 const CHARGE_MS: f32 = 500.0;
@@ -256,6 +271,10 @@ pub struct World {
     pub mobs: Vec<Mob>,
     /// Boss-encounter wipe time left (M21).
     pub encounter_ms: u64,
+    /// Shots in flight, the Bard's song (attack up) and the Cleric's heal sparkle (M22).
+    pub missiles: Vec<Shot>,
+    pub buff_ms: u64,
+    pub heal_ms: u64,
     waves: u32,
     wave_gap_ms: u64,
 }
@@ -291,6 +310,9 @@ impl World {
             messages: Messages::default(),
             mobs: Vec::new(),
             encounter_ms: 0,
+            missiles: Vec::new(),
+            buff_ms: 0,
+            heal_ms: 0,
             waves: 0,
             // The first wave draws near on the first tick.
             wave_gap_ms: battle::WAVE_GAP_MS,
@@ -700,7 +722,7 @@ impl World {
             if self.boss.is_none() {
                 h.engaged = h.mob_fight_ms > 0;
             }
-            h.charge = if h.engaged {
+            h.charge = if h.engaged && !h.class.ranged() {
                 (h.charge + dt as f32 / CHARGE_MS).min(1.0)
             } else {
                 (h.charge - dt as f32 / RETURN_MS).max(0.0)
@@ -723,27 +745,43 @@ impl World {
             || self.fireworks_ms > 0
             || self.messages.busy()
             || self.encounter_ms > 0
+            || !self.missiles.is_empty()
             || self
                 .mobs
                 .iter()
                 .any(|m| m.hit_ms > 0 || m.dying_ms.is_some())
     }
 
-    /// Auto-battle (M21): a working hero with nothing else to show charges the field
-    /// wave, swings (each strike frame hits the front slime), and runs back; a slime
-    /// sometimes hits back. Real actions and bosses always come first.
+    /// Auto-battle (M21/M22): a working hero with nothing else to show fights the field
+    /// wave. Melee classes charge and swing; ranged ones shoot from home and hit when the
+    /// shot lands. Each class has its trait (see `swing`). Real actions and bosses come
+    /// first; ranged boss fighters shoot at the boss (for show: the command decides).
     fn auto_battle(&mut self, dt: u64) {
         let standing = self.mobs.iter().any(|m| m.dying_ms.is_none());
         let boss_up = self.boss.is_some();
-        let quiet = !self.messages.busy();
         let mut swings = Vec::new();
         for (k, h) in self.heroes.iter_mut().enumerate() {
             let seed = self.clock_ms / 97 + k as u64 * 7_919;
+            let t = h.anim_ms % SWING_MS;
+            let lands = t >= 80 && t < 80 + dt.min(SWING_MS);
+            if boss_up {
+                if h.engaged && h.class.ranged() && lands {
+                    self.missiles.push(Shot {
+                        hero: h.name.clone(),
+                        kind: h.class.missile(),
+                        t_ms: 0,
+                        dmg: 0,
+                        line: None,
+                    });
+                }
+                h.mob_fight_ms = 0;
+                continue;
+            }
             let free = h.status == Status::Working
                 && !h.busy()
                 && h.leaving_ms.is_none()
                 && h.rest_ms == 0;
-            if boss_up || !free || !standing {
+            if !free || !standing {
                 if h.mob_fight_ms > 0 {
                     h.mob_fight_ms = 0;
                     h.fight_cooldown_ms = FIGHT_GAP_MS;
@@ -752,9 +790,9 @@ impl World {
             }
             if h.mob_fight_ms > 0 {
                 h.mob_fight_ms = h.mob_fight_ms.saturating_sub(dt);
-                // The renderer's swing lands at 80 ms into each 600 ms swing.
-                let t = h.anim_ms % SWING_MS;
-                if h.charge >= 1.0 && t >= 80 && t < 80 + dt.min(SWING_MS) {
+                // Melee lands on the renderer's strike frame once in reach; ranged
+                // shoots on the same beat from home.
+                if lands && (h.charge >= 1.0 || h.class.ranged()) {
                     swings.push((k, seed));
                 }
                 if h.mob_fight_ms == 0 {
@@ -768,23 +806,120 @@ impl World {
             }
         }
         for (k, seed) in swings {
-            let dmg = 2 + self.heroes[k].level / 3 + (seed % 4) as u32;
-            let hit = battle::strike(&mut self.mobs, dmg);
-            let name = self.heroes[k].name.clone();
-            if quiet && let Some(hit) = hit {
-                self.messages.say(format!("{name} attacks! {hit}"));
+            self.swing(k, seed);
+        }
+        // Shots in flight land, hit and narrate.
+        let quiet = !self.messages.busy();
+        for s in &mut self.missiles {
+            s.t_ms += dt;
+        }
+        let (landed, flying): (Vec<Shot>, Vec<Shot>) =
+            self.missiles.drain(..).partition(|s| s.t_ms >= MISSILE_MS);
+        self.missiles = flying;
+        for s in landed {
+            if s.dmg == 0 {
+                continue;
             }
-            // One swing in four, the slime strikes back (cosmetic: stamina is real).
-            if seed % 4 == 0
-                && let Some(m) = self.mobs.iter().find(|m| m.dying_ms.is_none())
+            if let Some(hit) = battle::strike(&mut self.mobs, s.dmg)
+                && quiet
+                && let Some(line) = s.line
             {
-                let hit = 1 + (seed / 4 % 3) as u32;
-                if quiet {
-                    self.messages.say(format!(
-                        "The {} attacks! {name} takes {hit} damage.",
-                        m.kind.name()
-                    ));
+                self.messages.say(format!("{line} {hit}"));
+            }
+        }
+        self.buff_ms = self.buff_ms.saturating_sub(dt);
+        self.heal_ms = self.heal_ms.saturating_sub(dt);
+    }
+
+    /// One swing (or shot) of hero `k` at the field wave, with its class trait.
+    fn swing(&mut self, k: usize, seed: u64) {
+        use super::hero::Class;
+        let quiet = !self.messages.busy();
+        let h = &self.heroes[k];
+        let (name, class) = (h.name.clone(), h.class);
+        let buff = if self.buff_ms > 0 { 2 } else { 0 };
+        let base = 2 + h.level / 3 + (seed % 4) as u32 + buff;
+        let roll = seed / 5 % 4;
+        let say = |w: &mut World, line: String| {
+            if quiet {
+                w.messages.say(line);
+            }
+        };
+        match class {
+            Class::Cleric if roll == 0 => {
+                say(self, format!("{name} casts Heal! The party feels better."));
+                self.heal_ms = HEAL_MS;
+                for h in &mut self.heroes {
+                    h.say("+HP".into(), 'G');
                 }
+                return;
+            }
+            Class::Bard if roll == 0 => {
+                say(
+                    self,
+                    format!("{name} sings a battle song! Everyone's attack rises!"),
+                );
+                self.buff_ms = BUFF_MS;
+                for h in &mut self.heroes {
+                    h.say("ATK UP".into(), 'y');
+                }
+                return;
+            }
+            _ => {}
+        }
+        let (dmg, line) = match class {
+            Class::Rogue if roll == 1 => (base * 2, format!("{name} strikes twice! Critical hit!")),
+            Class::SahurKnight if roll == 1 => {
+                (base * 3 / 2, format!("{name}: TUNG TUNG TUNG! Smash!"))
+            }
+            Class::Mage => (base * 4 / 3, format!("{name} casts Fireball!")),
+            Class::Ranger => (base, format!("{name} shoots an arrow!")),
+            Class::Bard => (base, format!("{name} plays a sharp note!")),
+            Class::WildCard => {
+                let (mult, card) = [
+                    (1, "the Two of Clubs"),
+                    (2, "the Ace of Hearts"),
+                    (3, "the Joker"),
+                    (2, "the King of Spades"),
+                ][roll as usize];
+                let dmg = if card == "the Two of Clubs" {
+                    base / 2
+                } else {
+                    base * mult / 2
+                };
+                let tag = if mult == 3 { " Critical!" } else { "" };
+                (dmg.max(1), format!("{name} slashes with {card}!{tag}"))
+            }
+            _ => (base, format!("{name} attacks!")),
+        };
+        if class.ranged() {
+            self.missiles.push(Shot {
+                hero: name.clone(),
+                kind: class.missile(),
+                t_ms: 0,
+                dmg,
+                line: Some(line),
+            });
+        } else if let Some(hit) = battle::strike(&mut self.mobs, dmg) {
+            say(self, format!("{line} {hit}"));
+        }
+        // One swing in four the monster strikes back (cosmetic: stamina stays real).
+        if seed.is_multiple_of(4)
+            && let Some(m) = self.mobs.iter().find(|m| m.dying_ms.is_none())
+        {
+            let mob = m.kind.name();
+            if class == Class::Knight {
+                say(
+                    self,
+                    format!("The {mob} attacks! {name} blocks with the shield!"),
+                );
+                self.heroes[k].say("BLOCK".into(), 's');
+            } else {
+                let hit = 1 + (seed / 4 % 3) as u32;
+                say(
+                    self,
+                    format!("The {mob} attacks! {name} takes {hit} damage."),
+                );
                 self.heroes[k].say(format!("-{hit}"), 'r');
             }
         }
@@ -1216,6 +1351,49 @@ mod tests {
         w.update(16);
         assert_eq!(w.heroes[a].mob_fight_ms, 0);
         assert!(!w.heroes[a].engaged);
+    }
+
+    #[test]
+    fn every_class_fights_its_own_way() {
+        use super::battle::{Mob, MobKind};
+        let slime = || Mob {
+            kind: MobKind::Slime,
+            hp: 50,
+            max: 50,
+            hit_ms: 0,
+            last_damage: 0,
+            dying_ms: None,
+        };
+        let world = |class| {
+            let mut w = World::new("r", "t");
+            w.add_hero("H", class);
+            w.mobs = vec![slime()];
+            w
+        };
+        // seed 5: roll 1, no counterattack. Ranged: the shot hits on landing.
+        let mut w = world(Class::Mage);
+        w.swing(0, 5);
+        assert_eq!(w.missiles.len(), 1);
+        assert_eq!(w.mobs[0].hp, 50, "not yet");
+        w.update(MISSILE_MS);
+        assert!(w.mobs[0].hp < 50);
+        // Rogue critical: double damage.
+        let mut w = world(Class::Rogue);
+        w.swing(0, 5);
+        let base = 3; // 2 + level 1 / 3 + seed 5 % 4
+        assert_eq!(w.mobs[0].hp, 50 - base * 2);
+        // seed 0: roll 0 -> Cleric heals, Bard sings.
+        let mut w = world(Class::Cleric);
+        w.swing(0, 0);
+        assert!(w.heal_ms > 0);
+        assert_eq!(w.mobs[0].hp, 50);
+        let mut w = world(Class::Bard);
+        w.swing(0, 0);
+        assert!(w.buff_ms > 0);
+        // seed 4: roll 0, the slime strikes back -> the Knight blocks.
+        let mut w = world(Class::Knight);
+        w.swing(0, 4);
+        assert_eq!(w.heroes[0].float.as_ref().unwrap().0, "BLOCK");
     }
 
     #[test]

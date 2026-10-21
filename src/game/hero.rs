@@ -123,6 +123,14 @@ pub enum Action {
     Spellbook,
 }
 
+/// A ranged attack in flight (M22).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Missile {
+    Fireball,
+    Arrow,
+    Note,
+}
+
 /// How an action's prop moves while it plays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Motion {
@@ -295,6 +303,20 @@ impl Class {
             Class::Bard => "Bard",
             Class::SahurKnight => "Sahur Knight",
             Class::WildCard => "Wild Card",
+        }
+    }
+
+    /// Ranged classes stay home in a fight and shoot (M22); the rest charge in.
+    pub fn ranged(self) -> bool {
+        matches!(self, Class::Mage | Class::Ranger | Class::Bard)
+    }
+
+    /// What a ranged class shoots.
+    pub fn missile(self) -> Missile {
+        match self {
+            Class::Mage => Missile::Fireball,
+            Class::Ranger => Missile::Arrow,
+            _ => Missile::Note,
         }
     }
 
@@ -482,6 +504,10 @@ impl Hero {
         // renderer's).
         if self.engaged && self.charge >= 1.0 {
             return Anim::Attack;
+        }
+        // Ranged fighters cast from home (M22).
+        if self.class.ranged() && (self.mob_fight_ms > 0 || self.engaged) {
+            return Anim::Cast;
         }
         if self.charge > 0.0 {
             return Anim::Walk;

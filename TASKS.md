@@ -170,6 +170,29 @@ Legend: `[ ]` todo · each task lists **Done when** (acceptance criteria).
 - [x] Effects: slash marks on hits, enemy blink, a boss-appears transition.
   **Done when:** the demo plays as a narrated DQ-style battle in full and compact panes, with tests and a new GIF. (2026-10-21: `battles_are_narrated_and_edits_hit_the_field_wave`, `dq_band_shows_party_windows_and_messages`, battle.rs tests; previews at 112×18, 90×14, 80×11; GIF refreshed.)
 
+## M22 — Class skills in battle
+- [x] Ranged classes (Mage, Ranger, Bard) stay home and shoot: fireballs, arrows and notes fly to the target and hit on arrival. (The Wild Card stays melee — it charges in and slashes with a random card.)
+- [x] Each class has its trait: Rogue critical hits, Knight blocks the counterattack, Cleric heals the party, Bard's song raises everyone's attack, Sahur Knight smashes, Wild Card's draw is random.
+  **Done when:** every class fights differently in the demo and the messages say so. (2026-10-21: `every_class_fights_its_own_way`; fireball and arrows seen in demo frames.)
+
+## M23 — Monster variety
+- [ ] New field monsters (bat, skeleton, goblin, mushroom) with their own sprites, names and HP, alongside the slimes.
+- [ ] Each town theme has its own monster table.
+  **Done when:** two themes show different monsters.
+
+## M24 — Bosses strike back
+- [ ] While a boss fight runs, the boss uses a named move every few seconds ("The Test Golem uses Assertion Slam!"); the party windows shake and the heroes take cosmetic damage.
+  **Done when:** a long boss fight shows the boss attacking.
+
+## M25 — Victory screen
+- [ ] A boss defeat opens a DQ results window: victorious, EXP, Gold, and loot, for a few seconds.
+  **Done when:** the demo shows the results window after the boss falls.
+
+## M26 — Gold, shop and inn
+- [ ] Gold from monsters and bosses, saved per hero; shown on the character sheet and the party window row.
+- [ ] Town: a shop to buy gear with gold and an inn to buy the Well Rested buff.
+  **Done when:** gold earned in fights buys an item in the town shop.
+
 ## Manual QA checklist (run before each release)
 - [ ] Windows Terminal + native herdr: halfblock, auto-open, ask popup, transcript events.
 - [ ] Ghostty + herdr local: Kitty sprites, auto-open, ask popup, transcript events.
