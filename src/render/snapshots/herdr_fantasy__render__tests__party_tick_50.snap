@@ -19,7 +19,7 @@ Buffer {
         "╔═════════════╗╔═════════════╗╔═════════════╗╔═══════════════════════════════════════════╗",
         "║Claude  L12  ║║Codex   L6   ║║OpenCodeL2  z║║ A Goblin and a Red Slime draw near!       ║",
         "║HP▓▓▓▓░░ 65  ║║HP ------ ?? ║║HP ------ ?? ║║ Claude opens a chest: Cargo.toml          ║",
-        "╚═════════════╝╚═════════════╝╚═════════════╝╚═══════════════════════════════════════════╝",
+        "╚═════════════╝╚═════════════╝╚═════════════╝╚══════════════════════ c t q w s · ? help ═╝",
     ],
     styles: [
         x: 0, y: 0, fg: Rgb(244, 244, 244), bg: Rgb(51, 60, 87), underline: Reset, modifier: NONE,
@@ -410,5 +410,11 @@ Buffer {
         x: 43, y: 13, fg: Rgb(244, 244, 244), bg: Rgb(26, 28, 44), underline: Reset, modifier: NONE,
         x: 0, y: 14, fg: Rgb(255, 205, 117), bg: Rgb(26, 28, 44), underline: Reset, modifier: NONE,
         x: 15, y: 14, fg: Rgb(244, 244, 244), bg: Rgb(26, 28, 44), underline: Reset, modifier: NONE,
+        x: 68, y: 14, fg: Rgb(86, 108, 134), bg: Rgb(26, 28, 44), underline: Reset, modifier: NONE,
+        x: 69, y: 14, fg: Rgb(255, 205, 117), bg: Rgb(26, 28, 44), underline: Reset, modifier: NONE,
+        x: 70, y: 14, fg: Rgb(86, 108, 134), bg: Rgb(26, 28, 44), underline: Reset, modifier: NONE,
+        x: 81, y: 14, fg: Rgb(255, 205, 117), bg: Rgb(26, 28, 44), underline: Reset, modifier: NONE,
+        x: 82, y: 14, fg: Rgb(86, 108, 134), bg: Rgb(26, 28, 44), underline: Reset, modifier: NONE,
+        x: 88, y: 14, fg: Rgb(244, 244, 244), bg: Rgb(26, 28, 44), underline: Reset, modifier: NONE,
     ]
 }

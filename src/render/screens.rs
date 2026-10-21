@@ -460,7 +460,16 @@ pub fn help(area: Rect, buf: &mut Buffer) {
         ("Esc", "back to battle"),
         ("Ctrl-C", "quit the stage"),
     ];
-    put(buf, area, area.x, area.y, " Keys", 'y', true);
+    let x = put(buf, area, area.x, area.y, " Keys", 'y', true);
+    put(
+        buf,
+        area,
+        x + 2,
+        area.y,
+        "(click the stage pane first, so it gets the keys)",
+        's',
+        false,
+    );
     for (i, (k, what)) in lines.iter().enumerate() {
         let y = area.y + 2 + i as u16;
         let x = put(buf, area, area.x + 2, y, &format!("{k:<7}"), 'w', true);

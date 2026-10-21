@@ -518,6 +518,7 @@ mod tests {
         assert!(screen.contains("Claude  L3"), "party window");
         assert!(screen.contains("Claude attacks!"), "message window");
         assert!(screen.contains("╔"), "DQ window border");
+        assert!(screen.contains("? help"), "key hints on the message window");
     }
 
     #[test]

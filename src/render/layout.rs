@@ -81,6 +81,16 @@ pub fn render(w: &World, view: &View, area: Rect, buf: &mut Buffer) {
             Screen::Settings => screens::settings(w, view.selected, view.scroll, body, buf),
             _ => screens::help(body, buf),
         }
+        // What works on this screen, along the bottom-right edge.
+        let hint = match view.screen {
+            Screen::Quests => " ↑/↓ scroll · ←/→ hero · q or Esc back ",
+            Screen::Sheet => " ←/→ hero · c or Esc back ",
+            Screen::Week => " w or Esc back ",
+            Screen::Help => " Esc back ",
+            _ => "",
+        };
+        let hx = area.right().saturating_sub(hint.chars().count() as u16);
+        key_hint(buf, hx, area.bottom() - 1, area.right(), hint, 'd');
         return;
     }
     match m {
@@ -971,6 +981,22 @@ fn victory_window(w: &World, scene: Rect, buf: &mut Buffer) {
     }
 }
 
+/// A key hint like " c hero · t town · ? help ": the keys in yellow, the rest grey.
+fn key_hint(buf: &mut Buffer, x: u16, y: u16, end: u16, hint: &str, bg: char) {
+    let mut x = text(buf, x, y, end, " ", 'S', bg);
+    for (i, part) in hint.trim().split(" · ").enumerate() {
+        if i > 0 {
+            x = text(buf, x, y, end, " · ", 'S', bg);
+        }
+        let (key, label) = part.split_once(' ').unwrap_or((part, ""));
+        x = text(buf, x, y, end, key, 'y', bg);
+        if !label.is_empty() {
+            x = text(buf, x, y, end, &format!(" {label}"), 'S', bg);
+        }
+    }
+    text(buf, x, y, end, " ", 'S', bg);
+}
+
 /// Greedy word wrap to `width` columns (a word longer than a row is cut).
 fn wrap(s: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
@@ -1243,6 +1269,25 @@ fn dq_band(w: &World, view: &View, band: Rect, buf: &mut Buffer) {
             'w',
             'k',
         );
+    }
+    // The keys, on the message window's bottom border (longest that fits).
+    let hints: &[&str] = if view.screen == Screen::Town {
+        &[
+            " 1-3 buy · 4 inn · ←/→ hero · t back ",
+            " 1-4 buy · t back ",
+            " ? help ",
+        ]
+    } else {
+        &[
+            " c hero · t town · q quests · w week · s settings · ? help ",
+            " c t q w s · ? help ",
+            " ? help ",
+        ]
+    };
+    let room = msg.width.saturating_sub(4) as usize;
+    if let Some(h) = hints.iter().find(|h| h.chars().count() <= room) {
+        let hx = msg.right().saturating_sub(h.chars().count() as u16 + 2);
+        key_hint(buf, hx, msg.bottom() - 1, msg.right() - 1, h, 'k');
     }
     // The DQ "more" arrow while lines are waiting.
     if w.messages.busy() && (w.clock_ms / 300).is_multiple_of(2) {
